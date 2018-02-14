@@ -1,6 +1,6 @@
 # R-Cell-Line-HPA-Transcript-Analysis
 
-**Use R to analyze RNA-seq data on 64 cell lines from The Human Protein Atlas**
+**Use R to analyze RNA-seq data from 64 cell lines from The Human Protein Atlas**
 
 The RNA-seq data can be downloaded from the [Human Protein Atlas website](https://www.proteinatlas.org/about/download). Look under item **4 RNA Gene Data**. A copy of the cell line RNA data is also included in this repository. The data contains RNA-seq read counts from 64 different human cell lines. 
 
