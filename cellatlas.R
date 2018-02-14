@@ -5,11 +5,14 @@
 #This code performs some exploratory data analysis on the RNAseq data provided by the Human Protein Atlas
 #The data is provided as a .tsa file, which lists the TPM counts for each gene for each cell line
 
+
 #initialize packages
 
 library(reshape2)
 
-###########
+##############################################################
+#Reading in and cleaning-up/organizing data
+##############################################################
 
 #set the working directory to where the data and scripts are stored.
 setwd("/Users/ericklu/Desktop/Bioinformatics/cell line seq/")
@@ -100,5 +103,9 @@ length(which(matches == FALSE))
 
 #write the reorganized data to a new file
 write.table (mapped_byCell_raw, "bycellraw.txt", sep = '\t')
+
+##############################################################
+#Begin analysis to find genes enriched in cell lines of interest
+##############################################################
 
 
