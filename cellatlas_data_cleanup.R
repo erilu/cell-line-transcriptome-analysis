@@ -1,25 +1,17 @@
 
-#cellatlas.R
-#Erick Lu
-#Feb 13, 2018
-#This code performs some exploratory data analysis on the RNAseq data provided by the Human Protein Atlas
-#The data is provided as a .tsa file, which lists the TPM counts for each gene for each cell line
-
+#cellatlas_data_cleanup.R
+#The raw data is provided as a .tsa file ("rna_cellline_copy.tsv"), which lists the TPM counts for each gene for each cell line
+#This code will clean up and reorganize the data into a friendlier format for data analysis
 
 #initialize packages
-
 library(reshape2)
 
-##############################################################
-#Reading in and cleaning-up/organizing data
-##############################################################
-
 #set the working directory to where the data and scripts are stored.
-setwd("/Users/ericklu/Desktop/Bioinformatics/cell line seq/")
+setwd("~/bioinformatics/cellatlas/")
 getwd()
 
 #read in the .tsv file, tab delimited
-rawData = read.table("rna_celline copy.tsv", sep = "\t", header = T, stringsAsFactors = FALSE)
+rawData = read.table("rna_celline_copy.tsv", sep = "\t", header = T, stringsAsFactors = FALSE)
 head(rawData)
 
 #remove the last column, "unit," because all values are 'TPM'
@@ -50,17 +42,16 @@ length(ensemblNames)
 #problem here is that dim geneNames is 19600, but dim ensemblNames is 19613. there are 
 #ensembl genes listed that have duplicate gene names.
 
-#ideally I want to have columns for each of the cell lines, and each row is a gene
+#Ideally I want to have columns for each of the cell lines, and each row is a gene
 #right now the genes are grouped and the "Values" column contains a looping of genes
 #this StackOverflow link shows how to fix this: https://stackoverflow.com/questions/35213415/transpose-in-r-grouping-by-row-and-column
 #we will use the reshape2 package, function dcast
 
-rawDataFrame = data.frame(rawData[,-1])
+#get rid of the gene.names column, which has non-unique names
 rawEnsemblFrame = data.frame(rawData[,-2])
 
-#use the dcast function to put cell types as columns
+#use the dcast function to put cell types as columns, using unique ensembl id as rows
 byCellrawData = dcast (rawEnsemblFrame, Gene~Sample, value.var = c("Value"))
-#this function wants unique ids to map to the values, so i chose the ensembl id
 
 #I would still like to have the gene name, so I will now
 #Map the gene names to the ensembl ids
@@ -96,16 +87,13 @@ for ( i in c(1:length(mapped_byCell_raw$Gene)) ) {
     matches = append(matches,FALSE)
 }
 
+#check that all the gene.names match with the ensembl ids
 length(which(matches == TRUE))
 #[1] 19613
 length(which(matches == FALSE))
 #[1] 0
 
-#write the reorganized data to a new file
-write.table (mapped_byCell_raw, "bycellraw.txt", sep = '\t')
-
-##############################################################
-#Begin analysis to find genes enriched in cell lines of interest
-##############################################################
+#write the reorganized data to a new file, deleting the redunant Ensembl names column
+write.table (mapped_byCell_raw[,-1], "clean_rna_cellline.txt", sep = '\t')
 
 
