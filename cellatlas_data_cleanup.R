@@ -53,8 +53,14 @@ rawEnsemblFrame = data.frame(rawData[,-2])
 #use the dcast function to put cell types as columns, using unique ensembl id as rows
 byCellrawData = dcast (rawEnsemblFrame, Gene~Sample, value.var = c("Value"))
 
-#I would still like to have the gene name, so I will now
-#Map the gene names to the ensembl ids
+#I would still like to have the gene name, so I will now map the gene names to the ensembl ids.
+#One could use the "mapIds" function in the Bioconductor, part of packages:
+#library("AnnotationDbi")
+#library("org.Hs.eg.db")
+
+
+#Here is a manual way to do it if you don't use the Bioconductor package:
+
 ensemblMap = array()
 geneMap = array()
 
