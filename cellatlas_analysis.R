@@ -2,12 +2,11 @@
 #cellatlas_analysis.R
 #This code performs some exploratory data analysis on the RNAseq data provided by the Human Protein Atlas
 #We will use the cleaned-up data file: clean_rna_cellline.txt and Bioconductor package DESeq2
-#At the end we will also perform some very rudimentary analysis for fun.
+#We will also repeat our analysis, narrowed down on enzyme expression
 
 ######################################################################
 # Bioconductor DESeq2 analysis
 # Info can be found at: https://www.bioconductor.org/help/workflows/rnaseqGene/
-# resources: https://www.biostars.org/p/152033/
 ######################################################################
 
 #initialize packages
@@ -17,10 +16,9 @@ library("ggplot2")
 library("pheatmap")
 library("RColorBrewer")
 
-setwd("~/cellatlas_erick")
+setwd("~/cellatlas")
 
 #Reading in data file and creating DEseq2 object for further analysis
-
 celldata = read.table ( "clean_rna_cellline.txt", sep = "\t", header = T, stringsAsFactors = FALSE)
 head(celldata)
 
@@ -28,11 +26,12 @@ head(celldata)
 #DeSeq object requires a specific format: colData (different cell type condition), and countData (values);
 
 #Making the coldata parameter:
-#categorize each cell line as hematopoietic vs non-hematopoietically derived:
+#first categorize each cell line as hematopoietic vs non-hematopoietically derived:
 
 #Find indicies of all the lines which are hematopoietically derived:
 hemato = c( "HEL","NB.4","HAP1","HL.60","HMC.1","K.562","THP.1","U.937",
             "REH","Daudi","HDLM.2","Karpas.707","MOLT.4","RPMI.8226","U.266.70","U.266.84","U.698" )
+hematoIndex = which(cellLines %in% hemato)
 
 #Here are some classifications for the other cell lines. During this analysis I will only focus on
 #the hematopoietically derived vs non-hematopoietically derived lines.
@@ -44,21 +43,9 @@ hemato = c( "HEL","NB.4","HAP1","HL.60","HMC.1","K.562","THP.1","U.937",
 # cervical = c( "HeLa", "SiHa")
 # lung = c( "A549", "HBEC3.KT","SCLC.21H")
 
-
-hematoIndex = which(cellLines %in% hemato)
-
-#in case you want to categorize the other lines--
-# liverIndex = which(cellLines %in% liver)
-# brainIndex = which(cellLines %in% brain)
-# urinaryIndex = which(cellLines %in% urinary)
-# skinIndex = which(cellLines %in% skin)
-# cervicalIndex = which(cellLines %in% cervical)
-# lungIndex = which(cellLines %in% lung)
-
 #make a data.frame categorizing each cell line with their respective cell type
 celltype = rep (c("misc"), 64)
 celltype [hematoIndex]= "hemato"
-
 coldata = data.frame(factor(celltype))
 rownames(coldata) = colnames(celldata[,-c(1,2)])
 colnames(coldata) = "celltype"
@@ -78,7 +65,6 @@ countdata = ceiling(countdata)
 countdata10 = countdata*10
 
 #create the DESeq2 object, indicating that the cell lines are categorized by cell type
-#modified this to include categorization by cell name as well as type
 dds = DESeqDataSetFromMatrix (countData = countdata10,
                               colData = coldata,
                               design = ~ celltype)
@@ -102,7 +88,6 @@ save(rld, file = "rld_dds.Robj")
 
 
 #Use the rlog transformed data to cluster the cell lines based on similarity
-
 plotDists = function (rld.obj) {
   sampleDists <- dist(t(assay(rld.obj)))
   
@@ -119,15 +104,15 @@ plotDists = function (rld.obj) {
 plotDists(rld)
 
 #https://support.bioconductor.org/p/90791/
-#this shows the PCA plot of the log transformed data
-plotPCA(rld, intgroup = c("celltype"))
-
+#plotPCA() shows the PCA plot of the log transformed data
 #This code adds the names of the samples ontop of the PCA plot dots
 name.plotPCA = function (rld.obj) {
   p <- plotPCA(rld.obj,  intgroup = c("celltype"))
   p <- p + geom_text(aes_string(x = "PC1", y = "PC2", label = "name"), color = "black")
   print(p)
 }
+
+name.plotPCA(rld)
 
 #can observe that the cell lines: Hep.G2, HDLM.2, HMC.1 and SH.SY5Y have transcriptional profiles
 #that vastly differ from the majority of the cells
@@ -143,7 +128,6 @@ name.plotPCA(rld_removedoutliers_2nd)
 #re-running the sample dists on the outlier removed matrix:
 plotDists(rld_removedoutliers_2nd)
 
-
 ######################################################################
 # Performing differential gene analysis between cell lines / groups
 ######################################################################
@@ -155,11 +139,10 @@ plotDists(rld_removedoutliers_2nd)
 #remove the BJ-derivative cell lines, since these all originate from a common line (the BJ line)
 #and we would be over-representing these cells in the dataset in the context of this analysis
 ddsclean = dds[,-c(5,9,10,11,18,21,23,25,28,38,48)]
-
 ddsclean = DESeq (ddsclean)
-
 res_clean = results(ddsclean)
 
+# Sample output:
 # log2 fold change (MLE): celltype misc vs hemato 
 # Wald test p-value: celltype misc vs hemato 
 # DataFrame with 18738 rows and 6 columns
@@ -177,17 +160,24 @@ res_clean = results(ddsclean)
 # ENSG00000284552   0.04810316    -0.60188290 3.5115811 -0.17139940    0.8639097           NA
 # ENSG00000284554   3.88451639    -0.86557310 1.1975708 -0.72277405    0.4698187    0.6008764
 
+#run the analysis on subset of the samples:
 dds_select = dds[,c(14,22, 24, 25, 53)]
 dds_select = DESeq(dds_select)
 res_select = results (dds_select)
+#if you want to include the raw counts side by side with the results
+#(so you can verify the values per sample for interesting genes):
+res_select_withcount = cbind(res_select, assay(dds[,c(14, 53,22, 24, 25)]))
+
 
 dds_select_noHep = dds[,c(14,22, 24, 53)]
 dds_select_noHep = DESeq(dds_select_noHep)
 res_select_noHep = results (dds_select_noHep)
+res_select_noHep_withcount = cbind(res_select_noHep, assay(dds[,c(14, 53,22, 24)]))
 
+
+#run the analysis all all the samples (including outliers)
 dds_full = DESeq(dds)
 res_full = results(dds_full)
-
 
 # 4 result tables:
 # 1. res_full : all the cell lines, comparing hematopoietic vs non-hematopoietic
@@ -196,53 +186,170 @@ res_full = results(dds_full)
 # 4. res_select_noHep : the small subset with the Hep.G2 cell line removed
 
 #now we can export the files 
+#we want to annotate the files with gene symbol, annotated enzymes, and GO terms
+#https://www.bioconductor.org/packages/3.7/data/annotation/manuals/org.Hs.eg.db/man/org.Hs.eg.db.pdf
 
 library("AnnotationDbi")
 library("org.Hs.eg.db")
 
+#This function adds columns representing gene symbol, enzyme ID, and GO term
 my.mapids = function (res) {
   res$symbol <- mapIds(org.Hs.eg.db,
                        keys=row.names(res),
                        column="SYMBOL",
                        keytype="ENSEMBL",
                        multiVals="first")
+  res$enzyme <- mapIds(org.Hs.eg.db,
+                       keys=row.names(res),
+                       column="ENZYME",
+                       keytype="ENSEMBL",
+                       multiVals="first")
+  res$go <- mapIds(org.Hs.eg.db,
+                   keys=row.names(res),
+                   column="GO",
+                   keytype="ENSEMBL",
+                   multiVals="first")
   resOrdered <- res[order(res$pvalue),]
   return(resOrdered)
 }
 
+#Run the function my.mapids()
 res_clean = my.mapids(res_clean)
 res_full = my.mapids(res_full)
 res_select = my.mapids(res_select)
 res_select_noHep = my.mapids(res_select_noHep)
 
+#save the RObjects to files incase we want to load them for analysis later on.
 save(res_clean, file = "res_clean.Robj")
 save(res_full, file = "res_full.Robj")
-save(res_select, file = "res_select.Robj")
-save(res_select_noHep, file = "res_select_noHep.Robj")
+save(res_select_withcount, file = "res_select.Robj")
+save(res_select_noHep_withcount, file = "res_select_noHep.Robj")
 
 #export gene lists, top 2000 differentially expressed genes
-
 resOrderedDF <- as.data.frame(res_clean)[1:2000, ]
 write.csv(resOrderedDF, file = "res_clean_results.csv")
 
 resOrderedDF <- as.data.frame(res_full)[1:2000, ]
-write.csv(resOrderedDF, file = "res_full_results.csv")
+write.csv(resOrderedDF, file = "hemato_vs_non_DEG_results.csv")
 
-resOrderedDF <- as.data.frame(res_select)[1:2000, ]
+resOrderedDF <- as.data.frame(res_select_withcount)[1:2000, ]
 write.csv(resOrderedDF, file = "res_select_results.csv")
 
-resOrderedDF <- as.data.frame(res_select_noHep)[1:2000, ]
+resOrderedDF <- as.data.frame(res_select_noHep_withcount)[1:2000, ]
 write.csv(resOrderedDF, file = "res_select_noHep_results.csv")
 
 
-
 ######################################################################
-# Rudimentary analysis (what's there and whats not?)
+# Repeat the analysis, this time performing Enzyme-only comparison
 ######################################################################
 
+map.enzyme = function (res) {
+  res$enzyme <- mapIds(org.Hs.eg.db,
+                       keys=row.names(res),
+                       column="ENZYME",
+                       keytype="ENSEMBL",
+                       multiVals="first")
+  return(res)
+}
+
+#tag all the ensembl genes that have an enzyme entry
+enzyme_countdata10 = map.enzyme(countdata10)
+
+#remove all the ensembl genes that are missing an enzyme entry, leaving only annotated enzymes in the matrix
+enzyme_countdata10 = na.omit(enzyme_countdata10)
+
+dim(countdata10)
+#[1] 19613    64
+dim(enzyme_countdata10)
+#[1] 2222   65
+
+#it looks like there were 2222 annotated enzymes. now create the DESeq object:
+dds_e = DESeqDataSetFromMatrix (countData = enzyme_countdata10[,-65],
+                                colData = coldata,
+                                design = ~ celltype)
+
+#filter out rows (enzymes) with no reads at all:
+nrow(dds_e)
+# [1] 2222
+dds_e <- dds_e[ rowSums(counts(dds_e)) > 1, ]
+nrow(dds_e)
+# [1] 2200, around 22 enzymes filtered out
+
+# perform regularized-log transformation before plotting data on PCA plot:
+rld_e <- rlog(dds_e, blind = FALSE)
+head(assay(rld_e), 3)
+save(rld_e, file = "rld_e_dds.Robj")
+
+plotDists(rld_e)
+name.plotPCA(rld_e)
+#observe less variability when only looking at enzymes - try removing ASC.diff, A549, RT4, Hep.G2
+
+rld_e_removedoutliers = rld_e[,-c(2,5,25, 46)]
+name.plotPCA(rld_e_removedoutliers)
+
+#now we observe that THP.1 is highy separated from pack
+
+rld_e_removedoutliers_2nd = rld_e[,-c(2,5, 18, 23, 25, 46, 53)]
+name.plotPCA(rld_e_removedoutliers_2nd)
+
+#re-running the sample dists on the outlier removed matrix:
+plotDists(rld_e_removedoutliers_2nd)
 
 
+#############################################################################
+# Perform DESeq2 differential gene analysis on the enzyme DEseq object
+#############################################################################
 
+ddsclean = dds_e[,-c(2,5,9,10,11, 18, 23, 25, 46, 53)]
+ddsclean = DESeq (ddsclean)
+res_clean = results(ddsclean)
+
+dds_select = dds_e[,c(14,22, 24, 25, 53)]
+dds_select = DESeq(dds_select)
+res_select = results (dds_select)
+
+head(assay(dds_e[,c(14, 53,22, 24, 25)]))
+res_select_withcount = cbind(res_select, assay(dds_e[,c(14, 53,22, 24, 25)]))
+
+dds_select_noHep = dds_e[,c(14,22, 24, 53)]
+dds_select_noHep = DESeq(dds_select_noHep)
+res_select_noHep = results (dds_select_noHep)
+res_select_noHep_withcount = cbind(res_select_noHep, assay(dds_e[,c(14, 53,22, 24)]))
+
+dds_full = DESeq(dds_e)
+res_full = results(dds_full)
+
+res_clean = my.mapids(res_clean)
+res_full = my.mapids(res_full)
+res_select_withcount = my.mapids(res_select_withcount)
+res_select_noHep_withcount = my.mapids(res_select_noHep_withcount)
+
+save(res_clean, file = "res_clean_enzonly.Robj")
+save(res_full, file = "res_full_enzonly.Robj")
+save(res_select_withcount, file = "res_select_enzonly_withcount.Robj")
+save(res_select_noHep_withcount, file = "res_select_noHep_enzonly_withcount.Robj")
+
+#export sorted enzyme lists:
+write.csv(res_clean, file = "enzymeonly_res_clean_results.csv")
+write.csv(res_full, file = "enzymeonly_res_full_results.csv")
+write.csv(res_select_withcount, file = "enzymeonly_res_select_results_withcount.csv")
+write.csv(res_select_noHep_withcount, file = "enzymeonly_res_select_noHep_results_withcount.csv")
+
+#taking a closer look at the data - some genes are greatly enriched in only one of the non-hematopoetic cell types
+#this causes the algorithm to pull it out as a differentially expressed gene. for example:
+
+res_select_withcount[which (res_select_withcount$Hep.G2 > 800),]
+
+#                  symbol    Daudi     THP.1     HEK.293  HeLa    Hep.G2
+#ENSG00000115718     PROC   0         0         2        48      1055   
+
+#may be useful to then filter the results such that there is a minimum cutoff required for each sample
+#here is how to filter out genes that have less than 10 transcripts for a certain cell line:
+
+filtered = res_select_withcount[which (res_select_withcount$Hep.G2 > 10),]
+
+
+sessionInfo()
 #######
 # Session Info
 ######
