@@ -2,6 +2,7 @@
 #cellatlas_analysis.R
 #This code performs some exploratory data analysis on the RNAseq data provided by the Human Protein Atlas
 #We will use the cleaned-up data file: clean_rna_cellline.txt and Bioconductor package DESeq2
+#Will visualize the data using PCA plot and Volcano plot, and also identify differentially expressed genes (csv file).
 #We will also repeat our analysis, narrowed down on enzyme expression
 
 ######################################################################
@@ -108,7 +109,9 @@ plotDists(rld)
 #This code adds the names of the samples ontop of the PCA plot dots
 name.plotPCA = function (rld.obj) {
   p <- plotPCA(rld.obj,  intgroup = c("celltype"))
-  p <- p + geom_text(aes_string(x = "PC1", y = "PC2", label = "name"), color = "black")
+  p <- p + geom_text_repel(aes_string(x = "PC1", y = "PC2", label = "name"), color = "black")
+  p = p+ ggtitle("PCA Plot - Clustering analysis of
+                 \nHematopoietic vs Non-Hematopoietic cell lines")
   print(p)
 }
 
@@ -121,8 +124,10 @@ rld_removedoutliers = rld[,-c(21,25,28, 48)]
 name.plotPCA(rld_removedoutliers)
 
 #now we observe that ASC.diff, MOLT.4, and HEL are also quite separated from the pack
+#also remove the BJ-derivative cell lines, since these all originate from a common line (the BJ line)
+#and we would be over-representing these cells in the dataset in the context of this analysis
 
-rld_removedoutliers_2nd = rld[,-c(5, 18, 21,23,25,28,38,48)]
+rld_removedoutliers_2nd = rld[,-c(5,9,10,11,18,21,23,25,28,38,48)]
 name.plotPCA(rld_removedoutliers_2nd)
 
 #re-running the sample dists on the outlier removed matrix:
@@ -136,8 +141,7 @@ plotDists(rld_removedoutliers_2nd)
 #DEseq performs estimateSizeFactors() and estimateDispersions(), so pre-running these commands are not necessary
 #finally, will perform the analysis on only the cell lines of interest (+/- HepG2);
 
-#remove the BJ-derivative cell lines, since these all originate from a common line (the BJ line)
-#and we would be over-representing these cells in the dataset in the context of this analysis
+#use the non-outlier cells for the analysis
 ddsclean = dds[,-c(5,9,10,11,18,21,23,25,28,38,48)]
 ddsclean = DESeq (ddsclean)
 res_clean = results(ddsclean)
@@ -227,16 +231,38 @@ save(res_select_noHep_withcount, file = "res_select_noHep.Robj")
 
 #export gene lists, top 2000 differentially expressed genes
 resOrderedDF <- as.data.frame(res_clean)[1:2000, ]
-write.csv(resOrderedDF, file = "res_clean_results.csv")
+write.csv(resOrderedDF, file = "hemato_vs_non_DEG_results.csv")
 
 resOrderedDF <- as.data.frame(res_full)[1:2000, ]
-write.csv(resOrderedDF, file = "hemato_vs_non_DEG_results.csv")
+write.csv(resOrderedDF, file = "res_full_results.csv")
 
 resOrderedDF <- as.data.frame(res_select_withcount)[1:2000, ]
 write.csv(resOrderedDF, file = "res_select_results.csv")
 
 resOrderedDF <- as.data.frame(res_select_noHep_withcount)[1:2000, ]
 write.csv(resOrderedDF, file = "res_select_noHep_results.csv")
+
+
+# Volcano plot to visualize top 20 differentially expressed genes in the cleaned up dataset
+
+library("ggplot2") 
+library("ggrepel") 
+
+plot.volcano = function (res) {
+  input <- mutate(data.frame(res), sig=ifelse(data.frame(res)$padj<0.0001, "padj < 0.0001", "Not Sig"))
+  #dim(input)
+  input = input[!is.na(input$sig),]
+  #dim(input)
+  volc = ggplot(input, aes(log2FoldChange, -log10(pvalue))) +
+    geom_point(aes(col=sig)) + 
+    scale_color_manual(values=c("black", "red")) + 
+    ggtitle("Volcano Plot - Differentially Expressed Genes 
+            \nEnriched in hematopoietic (left) vs non-hematopoietic (right) cell lines") +
+    geom_text_repel(data=head(input, 20), aes(label=symbol))
+  print(volc)
+}
+
+plot.volcano(res_clean)
 
 
 ######################################################################
@@ -334,6 +360,9 @@ write.csv(res_clean, file = "enzymeonly_res_clean_results.csv")
 write.csv(res_full, file = "enzymeonly_res_full_results.csv")
 write.csv(res_select_withcount, file = "enzymeonly_res_select_results_withcount.csv")
 write.csv(res_select_noHep_withcount, file = "enzymeonly_res_select_noHep_results_withcount.csv")
+
+plot.volcano(res_clean)
+plot.volcano(res_select_noHep_withcount)
 
 #taking a closer look at the data - some genes are greatly enriched in only one of the non-hematopoetic cell types
 #this causes the algorithm to pull it out as a differentially expressed gene. for example:
