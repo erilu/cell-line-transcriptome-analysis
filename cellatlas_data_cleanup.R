@@ -4,10 +4,12 @@
 #This code will clean up and reorganize the data into a friendlier format for data analysis
 
 #initialize packages
-library(reshape2)
+library("reshape2")
+library("AnnotationDbi")
+library("org.Hs.eg.db")
 
 #set the working directory to where the data and scripts are stored.
-setwd("~/bioinformatics/cellatlas/")
+setwd("~/cellatlas")
 getwd()
 
 #read in the .tsv file, tab delimited
@@ -54,12 +56,20 @@ rawEnsemblFrame = data.frame(rawData[,-2])
 byCellrawData = dcast (rawEnsemblFrame, Gene~Sample, value.var = c("Value"))
 
 #I would still like to have the gene name, so I will now map the gene names to the ensembl ids.
-#One could use the "mapIds" function in the Bioconductor, part of packages:
-#library("AnnotationDbi")
-#library("org.Hs.eg.db")
+#One could use the "mapIds" function in the Bioconductor, part of packages: AnnotationDbi and org.Hs.eg.db"
 
+map.symbol = function (res) {
+  res$symbol <- mapIds(org.Hs.eg.db,
+                       keys=res$Gene,
+                       column="SYMBOL",
+                       keytype="ENSEMBL",
+                       multiVals="first")
+  return(res)
+}
 
-#Here is a manual way to do it if you don't use the Bioconductor package:
+mapped_byCell_raw = map.symbol(byCellrawData)
+
+#Here is a manual way to do it if you don't use the Bioconductor package, using the values provided in the raw data file:
 
 ensemblMap = array()
 geneMap = array()

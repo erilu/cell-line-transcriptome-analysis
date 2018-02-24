@@ -16,6 +16,7 @@ library("dplyr")
 library("ggplot2")
 library("pheatmap")
 library("RColorBrewer")
+library("ggrepel") 
 
 setwd("~/cellatlas")
 
@@ -244,9 +245,6 @@ write.csv(resOrderedDF, file = "res_select_noHep_results.csv")
 
 
 # Volcano plot to visualize top 20 differentially expressed genes in the cleaned up dataset
-
-library("ggplot2") 
-library("ggrepel") 
 
 plot.volcano = function (res) {
   input <- mutate(data.frame(res), sig=ifelse(data.frame(res)$padj<0.0001, "padj < 0.0001", "Not Sig"))
