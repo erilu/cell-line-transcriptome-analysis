@@ -20,7 +20,7 @@ library("RColorBrewer")
 setwd("~/cellatlas")
 
 #Reading in data file and creating DEseq2 object for further analysis
-celldata = read.table ( "clean_rna_cellline.txt", sep = "\t", header = T, stringsAsFactors = FALSE)
+celldata = read.table ( "data_clean_rna_cellline.txt", sep = "\t", header = T, stringsAsFactors = FALSE)
 head(celldata)
 
 #Use the DESeq2 command, DESeqDataSetFromMatrix, to create a DEseq2 object from the raw data
@@ -231,7 +231,7 @@ save(res_select_noHep_withcount, file = "res_select_noHep.Robj")
 
 #export gene lists, top 2000 differentially expressed genes
 resOrderedDF <- as.data.frame(res_clean)[1:2000, ]
-write.csv(resOrderedDF, file = "hemato_vs_non_DEG_results.csv")
+write.csv(resOrderedDF, file = "results_hemato_vs_non_DEG.csv")
 
 resOrderedDF <- as.data.frame(res_full)[1:2000, ]
 write.csv(resOrderedDF, file = "res_full_results.csv")

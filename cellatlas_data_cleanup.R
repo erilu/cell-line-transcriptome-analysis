@@ -11,7 +11,7 @@ setwd("~/bioinformatics/cellatlas/")
 getwd()
 
 #read in the .tsv file, tab delimited
-rawData = read.table("rna_celline_copy.tsv", sep = "\t", header = T, stringsAsFactors = FALSE)
+rawData = read.table("data_rna_celline_copy.tsv", sep = "\t", header = T, stringsAsFactors = FALSE)
 head(rawData)
 
 #remove the last column, "unit," because all values are 'TPM'
