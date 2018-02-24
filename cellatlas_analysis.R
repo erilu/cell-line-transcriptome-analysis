@@ -214,6 +214,11 @@ my.mapids = function (res) {
                    column="GO",
                    keytype="ENSEMBL",
                    multiVals="first")
+  res$genename <- mapIds(org.Hs.eg.db,
+                         keys=row.names(res),
+                         column="GENENAME",
+                         keytype="ENSEMBL",
+                         multiVals="first")
   resOrdered <- res[order(res$pvalue),]
   return(resOrdered)
 }
