@@ -16,7 +16,9 @@ library("dplyr")
 library("ggplot2")
 library("pheatmap")
 library("RColorBrewer")
+library("ggplot2") 
 library("ggrepel") 
+library("gplots")
 
 setwd("~/cellatlas")
 
@@ -266,6 +268,52 @@ plot.volcano = function (res) {
 }
 
 plot.volcano(res_clean)
+
+
+# plot a heatmap using heatmap2 to visualize spread between cell lines for top 50 genes, using heatmap.2 from gplots package
+
+#reorganize the data for heatmap visualization:
+resOrdered_clean <- res_clean_withcount[order(res_clean_withcount$pvalue),]
+resOrdered_pval <- as.data.frame(resOrdered_clean)[1:50, ]
+resOrdered_l2fc <- resOrdered_pval[order(resOrdered_pval$log2FoldChange),]
+resOrdered_l2fc$symbol <- mapIds(org.Hs.eg.db,
+                                 keys=row.names(resOrdered_l2fc),
+                                 column="SYMBOL",
+                                 keytype="ENSEMBL",
+                                 multiVals="first")
+rownames(resOrdered_l2fc) = resOrdered_l2fc$symbol
+resOrdered_l2fc = resOrdered_l2fc[,-c(18,28,29,30,36, 60)]
+hemato_res = which(colnames(resOrdered_l2fc) %in% hemato)
+
+#heatmap requires data.matrix object, initialize one that has hematopoietic cell lines grouped together
+raw = data.matrix(cbind( resOrdered_l2fc[,-c(1:6,hemato_res)], resOrdered_l2fc[,hemato_res]  ))
+
+#initialize variable for RColorBrewer (value can be either: BrBG PiYG PRGn PuOr RdBu RdGy RdYlBu RdYlGn Spectral)
+brewer_palette <- "RdBu"
+
+#Ramp the color in order to get the scale.
+ramp <- colorRampPalette(brewer.pal(11, brewer_palette))
+mr <- ramp(256)[256:1]
+
+#Run the heatmap.2 function in order to generate the heatmap. 
+#scale = "row" means each row will be standardized, "none" means raw values used
+#col = mr uses the color scheme that we ramped from colorbrewer
+#rowv / colv = FALSE means that the original order of the rows / cols will be retained.
+#lwid and lhei change the relative size of the heatmap components
+par(mar=c(1,1,1,1))
+heatmap.2(raw,
+          density.info="none",  
+          trace="none",         
+          #margins =c(5,5),    
+          col=mr,
+          scale = "row",
+          dendrogram = 'none',
+          Rowv=FALSE,
+          Colv=FALSE,
+          lwid = c(0.05,4),
+          lhei = c(1,5),
+          main = 'Heatmap of top 50 differentially expressed genes between\na subset of hematopoietic vs non-hematopoietic cell lines'
+) 
 
 
 ######################################################################
