@@ -153,19 +153,13 @@ res_clean = results(ddsclean)
 # log2 fold change (MLE): celltype misc vs hemato 
 # Wald test p-value: celltype misc vs hemato 
 # DataFrame with 18738 rows and 6 columns
-# baseMean log2FoldChange     lfcSE        stat       pvalue         padj
-# <numeric>      <numeric> <numeric>   <numeric>    <numeric>    <numeric>
-#   ENSG00000000003    291.99934    6.626358377 0.4757870 13.92715323 4.332839e-44 2.854648e-41
+#                     baseMean log2FoldChange     lfcSE        stat       pvalue         padj
+#                    <numeric>      <numeric> <numeric>   <numeric>    <numeric>    <numeric>
+# ENSG00000000003    291.99934    6.626358377 0.4757870 13.92715323 4.332839e-44 2.854648e-41
 # ENSG00000000005      0.00000    0.000000000 0.0000000  0.00000000 1.000000e+00           NA
 # ENSG00000000419    859.52378    0.005919813 0.1760574  0.03362433 9.731767e-01 9.832052e-01
 # ENSG00000000457     56.76461   -0.475573276 0.1599503 -2.97325568 2.946589e-03 1.079717e-02
 # ENSG00000000460    155.16068   -0.541859654 0.2926190 -1.85175800 6.406058e-02 1.336638e-01
-# ...                      ...            ...       ...         ...          ...          ...
-# ENSG00000284512   3.40815722    -0.57261642 0.4252183 -1.34664092    0.1780959    0.2944312
-# ENSG00000284526 128.84405899    -0.24041343 0.6612565 -0.36357060    0.7161787    0.8075150
-# ENSG00000284546   0.05234491     0.09012843 3.5115811  0.02566605    0.9795237           NA
-# ENSG00000284552   0.04810316    -0.60188290 3.5115811 -0.17139940    0.8639097           NA
-# ENSG00000284554   3.88451639    -0.86557310 1.1975708 -0.72277405    0.4698187    0.6008764
 
 # run the analysis on subset of the samples:
 dds_select = dds[,c(14,22, 24, 25, 53)]
