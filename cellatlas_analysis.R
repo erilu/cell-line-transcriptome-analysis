@@ -248,12 +248,12 @@ write.csv(resOrderedDF, file = "res_select_noHep_results.csv")
 # Volcano plot to visualize top 20 differentially expressed genes in the cleaned up dataset
 
 plot.volcano = function (res) {
-  input <- mutate(data.frame(res), sig=ifelse(data.frame(res)$padj<0.0001, "padj < 0.0001", "Not Sig"))
-  #dim(input)
-  input = input[!is.na(input$sig),]
-  #dim(input)
+  input <- mutate(data.frame(res), significance=ifelse(data.frame(res)$padj<0.0001, "padj < 0.0001", "Not Significant"))
+  
+  input = input[!is.na(input$significance),]
+  
   volc = ggplot(input, aes(log2FoldChange, -log10(pvalue))) +
-    geom_point(aes(col=sig)) + 
+    geom_point(aes(col=significance)) + 
     scale_color_manual(values=c("black", "red")) + 
     ggtitle("Volcano Plot - Differentially Expressed Genes 
             \nEnriched in hematopoietic (left) vs non-hematopoietic (right) cell lines") +
