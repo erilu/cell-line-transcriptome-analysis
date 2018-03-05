@@ -294,11 +294,10 @@ mr <- ramp(256)[256:1]
 # col = mr uses the color scheme that we ramped from colorbrewer
 # rowv / colv = FALSE means that the original order of the rows / cols will be retained.
 # lwid and lhei change the relative size of the heatmap components
-par(mar=c(1,1,1,1))
+
 heatmap.2(raw,
           density.info="none",  
           trace="none",         
-          #margins =c(5,5),    
           col=mr,
           scale = "row",
           dendrogram = 'none',
