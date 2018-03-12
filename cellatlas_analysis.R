@@ -2,8 +2,8 @@
 # cellatlas_analysis.R
 # This code performs some exploratory data analysis on the RNAseq data provided by the Human Protein Atlas
 # We will use the cleaned-up data file: clean_rna_cellline.txt and Bioconductor package DESeq2
-# Will visualize the data using PCA plot and Volcano plot, and also identify differentially expressed genes (csv file).
-# We will also repeat our analysis, narrowed down on enzyme expression
+# Will visualize the data using various plots and also identify differentially expressed genes (csv file).
+# We will also repeat our analysis, focusing on enzyme expression
 
 ######################################################################
 # Bioconductor DESeq2 analysis
