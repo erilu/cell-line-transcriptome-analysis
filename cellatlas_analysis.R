@@ -280,6 +280,9 @@ rownames(resOrdered_l2fc) = resOrdered_l2fc$symbol
 resOrdered_l2fc = resOrdered_l2fc[,-c(18,28,29,30,36, 60)] # remove some of the lines due to redundancy
 hemato_res = which(colnames(resOrdered_l2fc) %in% hemato)
 
+# heatmap needs data.matrix object, make one that has hematopoietic cell lines grouped together
+raw = data.matrix(cbind( resOrdered_l2fc[,-c(1:6,hemato_res)], resOrdered_l2fc[,hemato_res]  ))
+
 # make heatmap using ggplot2
 # ggplot2 heatmap requires long format data - we currently have data in the "wide" format -
 # to reorganize data, use melt - https://stackoverflow.com/questions/30040420/heat-map-per-column-with-ggplot2
@@ -310,8 +313,6 @@ print(heatmap)
 
 # make heatmap using heatmap.2 in gplots package. formatting is difficult so
 # you could export the plot as a PDF and then format with adobe illustrator. ggplot2 is more customizable
-# heatmap requires data.matrix object, initialize one that has hematopoietic cell lines grouped together
-raw = data.matrix(cbind( resOrdered_l2fc[,-c(1:6,hemato_res)], resOrdered_l2fc[,hemato_res]  ))
 
 # initialize variable for RColorBrewer (value can be either: BrBG PiYG PRGn PuOr RdBu RdGy RdYlBu RdYlGn Spectral)
 brewer_palette <- "RdBu"
