@@ -264,9 +264,10 @@ plot.volcano = function (res) {
 plot.volcano(res_clean)
 
 
-# plot a heatmap using heatmap2 to visualize spread between cell lines for top 50 genes, using heatmap.2 from gplots package
+# plot a heatmap using heatmap2 to visualize spread between cell lines for top 50 genes, 2 examples using different packages
 
-# reorganize the data for heatmap visualization:
+# reorganize the data for heatmap visualization (order by pvalue, select most significant, then sort by log2foldchange):
+# you can customize how you want to sort the data (another way would be to have a pvalue cutoff, then select top log2fold differences)
 resOrdered_clean <- res_clean_withcount[order(res_clean_withcount$pvalue),]
 resOrdered_pval <- as.data.frame(resOrdered_clean)[1:50, ]
 resOrdered_l2fc <- resOrdered_pval[order(resOrdered_pval$log2FoldChange),]
@@ -276,9 +277,39 @@ resOrdered_l2fc$symbol <- mapIds(org.Hs.eg.db,
                                  keytype="ENSEMBL",
                                  multiVals="first")
 rownames(resOrdered_l2fc) = resOrdered_l2fc$symbol
-resOrdered_l2fc = resOrdered_l2fc[,-c(18,28,29,30,36, 60)]
+resOrdered_l2fc = resOrdered_l2fc[,-c(18,28,29,30,36, 60)] # remove some of the lines due to redundancy
 hemato_res = which(colnames(resOrdered_l2fc) %in% hemato)
 
+# make heatmap using ggplot2
+# ggplot2 heatmap requires long format data - we currently have data in the "wide" format -
+# to reorganize data, use melt - https://stackoverflow.com/questions/30040420/heat-map-per-column-with-ggplot2
+# long vs wide data format - https://www.theanalysisfactor.com/wide-and-long-data/ 
+
+melted = melt(raw)
+colnames(melted) = c("Gene","Cell_Line","Expression")
+
+scale_melted <- ddply(melted, .(Gene), transform, rescale = scale(Expression))
+scale_melted$Gene <- factor(scale_melted$Gene, levels = unique(rev(as.character(scale_melted$Gene))))
+
+heatmap = ggplot(scale_melted, aes (Cell_Line, Gene) ) +
+  geom_tile(aes(fill = rescale), color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "firebrick") +
+  ylab("List of Genes") +
+  xlab("Samples") +
+  theme(legend.title = element_text(size = 15),
+        legend.text = element_text(size = 12),
+        plot.title = element_text(size=16),
+        axis.title=element_text(size=14,face="bold"),
+        axis.text.x = element_text(size=12, angle = 45, hjust = 1),
+        axis.text.y = element_text(size = 12)) +
+  labs(fill = "Expression level") +
+  ggtitle("Heatmap of top 50 differentially expressed genes between a subset of hematopoietic vs non-hematopoietic cell lines")
+
+print(heatmap)
+
+
+# make heatmap using heatmap.2 in gplots package. formatting is difficult so
+# you could export the plot as a PDF and then format with adobe illustrator. ggplot2 is more customizable
 # heatmap requires data.matrix object, initialize one that has hematopoietic cell lines grouped together
 raw = data.matrix(cbind( resOrdered_l2fc[,-c(1:6,hemato_res)], resOrdered_l2fc[,hemato_res]  ))
 
