@@ -44,7 +44,7 @@ We can now read in the cleaned up data file and explore the differences in trans
 
 ![PCA clustering of cell lines](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_PCA_cluster_hemato_vs_non.png)
 
-We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot.
+We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot. This suggests that they have different gene expression profiles. The next plot will show us some of the genes that contribute to the clustering we see here.
 
 ### Volcano plot to visualize differentially expressed genes with p-value cutoff
 
