@@ -112,7 +112,12 @@ plotDists(rld)
 # This code adds the names of the samples ontop of the PCA plot dots
 name.plotPCA = function (rld.obj) {
   p <- plotPCA(rld.obj,  intgroup = c("celltype"))
-  p <- p + geom_text_repel(aes_string(x = "PC1", y = "PC2", label = "name"), color = "black")
+  p <- p + geom_text_repel(aes_string(x = "PC1", y = "PC2", label = "name"), color = "black") + 
+    theme(aspect.ratio=1,
+          legend.title = element_text(size = 15),
+          legend.text = element_text(size = 12),
+          axis.text.x = element_text(size=12),
+          axis.text.y = element_text(size = 12))
   p = p+ ggtitle("PCA Plot - Clustering analysis of
                  \nHematopoietic vs Non-Hematopoietic cell lines")
   print(p)
