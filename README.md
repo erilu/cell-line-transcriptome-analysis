@@ -7,7 +7,7 @@
 
 The RNA-seq data can be downloaded from the [Human Protein Atlas website](https://www.proteinatlas.org/about/download). Look under item **4 RNA Gene Data**. A copy of the cell line RNA data is also included in this repository,  [data_rna_celline_copy](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/data_rna_celline_copy.tsv). The data contains RNA-seq read counts from 64 different human cell lines.
 
-A description of the lines can be found here: (https://www.proteinatlas.org/humancell/cell+line). This is a very useful resource for examining gene expression differences between cell lines from different origin tissues. These include many commonly used cell lines--researchers using these cell lines for experimental purposes will likely want to know what genes they express and to what extent they express them at.
+A description of the lines can be found here: (https://www.proteinatlas.org/humancell/cell+line). This is a very useful resource for examining gene expression differences between cell lines from different origin tissues. These include many commonly used cell lines--researchers using these cell lines for experimental purposes will likely want to know what genes they express and to what extent they express them at. This project will show you how to identify differentially expressed genes between different groups of cell lines, which is a useful technique that can be used to identify enriched pathways and possible drug targets.
 
 ---
 ## Organizing the data
@@ -44,7 +44,7 @@ We can now read in the cleaned up data file and explore the differences in trans
 
 ![PCA clustering of cell lines](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_PCA_cluster_hemato_vs_non.png)
 
-We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot. This suggests that they have different gene expression profiles. The next plot will show us some of the genes that contribute to the clustering we see here.
+Above is a principal components analysis (PCA) plot on a subset of the cell lines in the dataset. We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot. This suggests that they have different gene expression profiles. The next plot will show us some of the genes that contribute to the clustering we see here.
 
 ### Volcano plot to visualize differentially expressed genes with p-value cutoff
 
