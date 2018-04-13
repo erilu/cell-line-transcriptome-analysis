@@ -62,4 +62,36 @@ The differentially expressed genes can also be visualized using a heatmap.
 
 ---
 
+## Perform analysis only on enzymes
+
+For my research, I was also interested in how the enzyme expression profiles differed between hematopoietic and non-hematopoietically derived cell lines. To figure this out, I needed a way to filter out all the genes that were known to encode enzyme products. To do this, I used Bioconductor's ```AnnotationDbi``` and ```org.Hs.eg.db``` packages. After initializing the packages, running this function:
+
+```
+map.enzyme = function (res) {
+  res$enzyme <- mapIds(org.Hs.eg.db,
+                       keys=row.names(res),
+                       column="ENZYME",
+                       keytype="ENSEMBL",
+                       multiVals="first")
+  return(res)
+}
+```
+will apply the KEGG enzyme information to all the genes in the dataset. If the gene does not encode an enzyme, the value will be "NA". We can use this to our advantage to filter out non-enzyme encoding genes with ```na.omit()```:
+
+```
+# tag all the ensembl genes that have an enzyme entry
+enzyme_countdata10 = map.enzyme(countdata10)
+
+# remove all the ensembl genes that are missing an enzyme entry, leaving only annotated enzymes in the matrix
+enzyme_countdata10 = na.omit(enzyme_countdata10)
+
+dim(countdata10)
+# [1] 19613    64
+dim(enzyme_countdata10)
+# [1] 2222   65
+```
+This leaves us with 2222 enzymes! I then perform the same analysis as above, with this smaller table containing only the annotated enzymes.
+
+---
+
 If you are interested in learning how to perform a full RNA-seq pipeline analysis, you can look at my other [repo](https://github.com/erilu/Complete-RNA-seq-Pipeline-Transcriptome-Analysis) where I align raw .fastq sequencing files to a mouse reference genome, then use Bioconductor to find differentially expressed genes in activated vs. un-activated dendritic cells.
