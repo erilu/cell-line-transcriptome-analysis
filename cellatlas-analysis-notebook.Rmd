@@ -1,0 +1,388 @@
+---
+title: "Cell Line Transcriptome Analysis Using R"
+author: Erick Lu
+date: "March 18, 2020 \n\n[GitHub Repo](https://github.com/erilu/cell-line-transcriptome-analysis)"
+output:
+  html_document:
+    toc: true
+    df_print: paged
+---
+
+**Use R to analyze and visualize RNA-seq data from 64 cell lines from The Human Protein Atlas**
+
+---
+## The data
+
+This project will show you how to identify differentially expressed genes between different groups of cell lines, which is a useful technique that can be used to identify enriched pathways and possible drug targets.
+
+The RNA-seq data can be downloaded from the [Human Protein Atlas website](https://www.proteinatlas.org/about/download). Look under item 19, **RNA HPA cell line gene data**, and download rna_celline.tsv.zip. A copy of the cell line RNA data, `rna_celline.tsv`, is also included in this repository. The data contains RNA-seq expression values from 64 different human cell lines. A description of the lines can be found here: (https://www.proteinatlas.org/humanproteome/cell/cell+line). This is a very useful resource for examining gene expression differences between cell lines from different origin tissues.
+
+Here, I will take you through an analysis of hematopoietic vs non-hematopoietic cell lines, which includes:
+  1. Organizing the data.
+  2. Finding differentially expressed genes using DESeq2.
+  3. Annotating, exporting, and plotting the results.
+
+---
+## Reading in and organizing the data
+
+Since the data are tab-delimited, we will first read in the data using `read.table` with the setting `sep=\t`.
+
+```{r message=F}
+data <- read.table("rna_celline.tsv", sep = "\t", header = T, stringsAsFactors = FALSE)
+```
+
+Taking a look at the data, we see that it is organized in the "long" format, with 1258880 rows and 6 columns:
+
+```{r}
+dim(data)
+head(data)
+```
+
+For each of the 19670 genes, the expression values for each of the 64 cell lines are provided in consecutive rows. We can verify that there are equal representation of genes across cell lines by quickly counting using `group_by` and `summarize` from `dplyr`:
+
+```{r}
+library(tidyverse)
+data %>% group_by(Cell.line) %>% summarize (num_genes = n())
+```
+
+For downstream analysis, the data needs to be reorganized into a different format. The RNA-seq analysis package [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html) from Bioconductor requires the data to be a matrix of expression values, in which the rows correspond to individual genes and the columns correspond to cell lines.
+
+In order to create this matrix, I will use the `dcast` function from the R package `reshape2`. This function will create a matrix using the column defined by the `value.var` argument, arranging its values according to a specified `formula`. In our case, we will set `value.var=TPM` and `formula=Gene~Cell.line`, which will make a matrix of TPM (transcripts per milllion) values.
+
+```{r}
+library(reshape2)
+tpm <- dcast (data, Gene~Cell.line, value.var = "TPM")
+tpm <- column_to_rownames(tpm, var = "Gene")
+dim(tpm)
+tpm[1:10,1:5]
+```
+
+The dimensions of the reorganized data should be 19670 rows and 64 columns, with rownames corresponding to the ensembl IDs of each gene. I chose to use ensembl IDs as unique gene identifiers instead of the gene names, because it appears that there are a small number of duplicate gene names in the dataset:
+
+```{r}
+# of unique ensembl IDs
+length(unique(data$Gene))
+# of unique gene names
+length(unique(data$Gene.name))
+```
+
+Now that we have a data matrix of expression values in which each row is a gene and each column is a cell line, we can load this data into the R package DESeq2 to perform differential gene expression analysis, which I will explain in the section below.
+
+---
+
+## Differential Gene Analysis
+
+Here, we will explore the differences in transcription between cell lines of interest. We will cluster the cell lines and pull out differentially expressed genes between subtypes of cells.
+
+```{r}
+library(DESeq2)
+```
+
+```{r}
+hematopoietic <- c( "HEL","NB-4","HAP1","HL-60","HMC-1","K-562","THP-1","U-937",
+            "REH","Daudi","HDLM-2","Karpas-707","MOLT-4","RPMI-8226","U-266-70","U-266-84","U-698")
+
+condition <- ifelse( colnames(tpm) %in% hematopoietic, "hematopoietic", "non-hematopoietic")
+colData <- as.data.frame(condition)
+rownames(colData) <- colnames(tpm)
+colData
+```
+
+```{r}
+tpm <- tpm*10
+```
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = tpm,
+							  colData = colData,
+							  design = ~condition)
+```
+
+```{r}
+dds <- DESeq(dds)
+save(dds, file = "dds.Robj")
+load("dds.Robj")
+```
+
+```{r}
+annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
+head(annotation)
+```
+
+## Visualizations for sample variability
+
+
+```{r}
+vsd <- vst(dds, blind = TRUE)
+```
+
+### Variable Genes Heatmap
+
+```{r variable-gene-heatmap-all-samples}
+variable_gene_heatmap <- function (vsd.obj, num_genes = 500, annotation, title = "") {
+  brewer_palette <- "RdBu"
+  # Ramp the color in order to get the scale.
+  ramp <- colorRampPalette( RColorBrewer::brewer.pal(11, brewer_palette))
+  mr <- ramp(256)[256:1]
+  # get the stabilized counts from the vsd object
+  stabilized_counts <- assay(vsd.obj)
+  # calculate the variances by row(gene) to find out which genes are the most variable across the samples.
+  row_variances <- rowVars(stabilized_counts)
+  # get the top most variable genes
+  top_variable_genes <- stabilized_counts[order(row_variances, decreasing=T)[1:num_genes],]
+  # subtract out the means from each row, leaving the variances for each gene
+  top_variable_genes <- top_variable_genes - rowMeans(top_variable_genes, na.rm=T)
+  # replace the ensembl ids with the gene names
+  gene_names <- annotation$Gene.name[match(rownames(top_variable_genes), annotation$Gene.stable.ID)]
+  rownames(top_variable_genes) <- gene_names
+  # reconstruct colData without sizeFactors for heatmap labeling
+  coldata <- as.data.frame(vsd.obj@colData)
+  coldata$sizeFactor <- NULL
+  coldata$replaceable <- NULL
+  # draw heatmap using pheatmap
+  pheatmap::pheatmap(top_variable_genes, color = mr, annotation_col = coldata, fontsize_col = 8, fontsize_row = 250/num_genes, border_color = NA, main = title)
+}
+
+variable_gene_heatmap(vsd, num_genes = 40, annotation = annotation)
+```
+
+### PCA Plot
+
+```{r pca-plot}
+plot_PCA = function (vsd.obj) {
+  pcaData <- plotPCA(vsd.obj,  intgroup = c("condition"), returnData = T)
+  percentVar <- round(100 * attr(pcaData, "percentVar"))
+  ggplot(pcaData, aes(PC1, PC2, color=condition)) +
+    geom_point(size=3) +
+    labs(x = paste0("PC1: ",percentVar[1],"% variance"),
+         y = paste0("PC2: ",percentVar[2],"% variance"),
+         title = "PCA Plot colored by condition") +
+    ggrepel::geom_text_repel(aes(label = name), color = "black")
+}
+plot_PCA(vsd)
+```
+
+
+```{r}
+generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001, log2cutoff = 0.5, cpmcutoff = 2) {
+  # generate average counts per million metric from raw count data 
+  raw_counts <- counts(dds, normalized = F)
+  cpms <- enframe(rowMeans(edgeR::cpm(raw_counts)))
+  colnames(cpms) <- c("ensembl_id", "avg_cpm")
+  
+  # extract DESeq results between the comparisons indicated
+  res <- results(dds, contrast = c("condition", comparisons[1], comparisons[2]))[,-c(3,4)]
+  
+  # annotate the data with gene name and average counts per million value
+  res <- as_tibble(res, rownames = "ensembl_id")
+  # read in the annotation and append it to the data
+  my_annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
+  res <- left_join(res, my_annotation, by = c("ensembl_id" = "Gene.stable.ID"))
+  # append the average cpm value to the results data
+  res <- left_join(res, cpms, by = c("ensembl_id" = "ensembl_id"))
+  
+  # combine normalized counts with entire DE list
+  normalized_counts <- round(counts(dds, normalized = TRUE),3)
+  combined_data <- as_tibble(cbind(res, normalized_counts))
+  combined_data <- combined_data[order(combined_data$log2FoldChange, decreasing = T),]
+  
+  # make ordered rank file for GSEA, selecting only protein coding genes
+  res_prot <- res[which(res$Gene.type == "protein_coding"),]
+  res_prot_ranked <- res_prot[order(res_prot$log2FoldChange, decreasing = T),c("Gene.name", "log2FoldChange")]
+  res_prot_ranked <- na.omit(res_prot_ranked)
+  res_prot_ranked$Gene.name <- str_to_upper(res_prot_ranked$Gene.name)
+  
+  # generate sorted lists with the indicated cutoff values
+  res <- res[order(res$log2FoldChange, decreasing=TRUE ),]
+  de_genes_padj <- res[which(res$padj < padjcutoff),]
+  de_genes_log2f <- res[which(abs(res$log2FoldChange) > log2cutoff & res$padj < padjcutoff),]
+  de_genes_cpm <- res[which(res$avg_cpm > cpmcutoff & res$padj < padjcutoff),]
+  
+  # write output to files
+  write.csv (de_genes_padj, file = paste0(comparisons[1], "_vs_", comparisons[2], "_padj_cutoff.csv"), row.names =F)
+  write.csv (de_genes_log2f, file = paste0(comparisons[1], "_vs_", comparisons[2], "_log2f_cutoff.csv"), row.names =F)
+  write.csv (de_genes_cpm, file = paste0(comparisons[1], "_vs_", comparisons[2], "_cpm_cutoff.csv"), row.names =F)
+  write.csv (combined_data, file = paste0(comparisons[1], "_vs_", comparisons[2], "_allgenes.csv"), row.names =F)
+  write.table (res_prot_ranked, file = paste0(comparisons[1], "_vs_", comparisons[2], "_rank.rnk"), sep = "\t", row.names = F, quote = F)
+  
+  writeLines( paste0("For the comparison: ", comparisons[1], "_vs_", comparisons[2], ", out of ", nrow(combined_data), " genes, there were: \n", 
+               nrow(de_genes_padj), " genes below padj ", padjcutoff, "\n",
+               nrow(de_genes_log2f), " genes below padj ", padjcutoff, " and above a log2FoldChange of ", log2cutoff, "\n",
+               nrow(de_genes_cpm), " genes below padj ", padjcutoff, " and above an avg cpm of ", cpmcutoff, "\n",
+               "Gene lists ordered by log2fchange with the cutoffs above have been generated.") )
+  gene_count <- tibble (cutoff_parameter = c("padj", "log2fc", "avg_cpm" ), 
+                        cutoff_value = c(padjcutoff, log2cutoff, cpmcutoff), 
+                        signif_genes = c(nrow(de_genes_padj), nrow(de_genes_log2f), nrow(de_genes_cpm)))
+  invisible(gene_count)
+}
+```
+
+After running the function, the console should display the number of genes that passed each filtering critera:
+
+```{r}
+generate_DE_results (dds, c("hematopoietic", "non-hematopoietic"))
+```
+
+# plot counts
+
+```{r upgraded-plot-counts, fig.width=6, fig.height=3}
+plot_counts <- function (dds, gene, normalization = "DESeq2"){
+  # read in the annotation file
+  annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
+  # obtain normalized data
+  if (normalization == "cpm") {
+    normalized_data <- cpm(counts(dds, normalized = F)) # normalize the raw data by counts per million
+  } else if (normalization == "DESeq2")
+    normalized_data <- counts(dds, normalized = T) # use DESeq2 normalized counts
+  # get sample groups from colData
+  condition <- dds@colData$condition
+  # get the gene name from the ensembl id
+  if (is.numeric(gene)) { # check if an index is supplied or if ensembl_id is supplied
+    if (gene%%1==0 )
+      ensembl_id <- rownames(normalized_data)[gene]
+    else
+      stop("Invalid index supplied.")
+  } else if (gene %in% annotation$Gene.name){ # check if a gene name is supplied
+    ensembl_id <- annotation$Gene.stable.ID[which(annotation$Gene.name == gene)]
+  } else if (gene %in% annotation$Gene.stable.ID){
+    ensembl_id <- gene
+  } else {
+    stop("Gene not found. Check spelling.")
+  }
+  expression <- normalized_data[ensembl_id,]
+  gene_name <- annotation$Gene.name[which(annotation$Gene.stable.ID == ensembl_id)]
+  # construct a tibble with the grouping and expression
+  gene_tib <- tibble(condition = condition, expression = expression)
+  ggplot(gene_tib, aes(x = condition, y = expression))+
+    geom_boxplot(outlier.size = NULL)+
+    geom_point()+
+    labs (title = paste0("Expression of ", gene_name, " - ", ensembl_id), x = "group", y = paste0("Normalized expression (", normalization , ")"))+
+    theme(axis.text.x = element_text(size = 11), axis.text.y = element_text(size = 11))
+}
+
+plot_counts(dds, "P2RY8")
+plot_counts(dds, "TYROBP")
+plot_counts(dds, "GSTP1")
+```
+
+```{r differential-gene-heatmap}
+res <- read.csv ("hematopoietic_vs_non-hematopoietic_allgenes.csv", header = T, check.names = F)
+
+DE_gene_heatmap <- function(res, padj_cutoff = 0.0001, ngenes = 20) {
+  # generate the color palette
+  brewer_palette <- "RdBu"
+  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, brewer_palette))
+  mr <- ramp(256)[256:1]
+  # obtain the significant genes and order by log2FoldChange
+  significant_genes <- res %>% filter(padj < padj_cutoff) %>% arrange (desc(abs(log2FoldChange))) %>% head (ngenes)
+  heatmap_values <- as.matrix(significant_genes[,-c(1:8)])
+  rownames(heatmap_values) <- significant_genes$Gene.name
+  heatmap_values <- cbind (heatmap_values[,colnames(heatmap_values) %in% hematopoietic], heatmap_values[,!colnames(heatmap_values) %in% hematopoietic])
+  # plot the heatmap using pheatmap
+  pheatmap::pheatmap(heatmap_values, color = mr, scale = "row", annotation_col = colData, fontsize_col = 10, fontsize_row = 200/ngenes, fontsize = 5, border_color = NA, cluster_cols = F)
+}
+DE_gene_heatmap(res, 0.5, 50)
+```
+
+
+```{r volcano-plot}
+
+plot_volcano <- function (res, padj_cutoff, nlabel = 10, label.by = "padj"){
+  # assign significance to results based on padj
+  res <- mutate(res, significance=ifelse(res$padj<padj_cutoff, paste0("padj < ", padj_cutoff), paste0("padj > ", padj_cutoff)))
+  res = res[!is.na(res$significance),]
+  significant_genes <- res %>% filter(significance == paste0("padj < ", padj_cutoff))
+  
+  # get labels for the highest or lowest genes according to either padj or log2FoldChange
+  if (label.by == "padj") {
+    top_genes <- significant_genes %>% filter (log2FoldChange > 0) %>% arrange(padj) %>% head(nlabel)
+    bottom_genes <- significant_genes %>% filter (log2FoldChange < 0) %>% arrange(padj) %>% head (nlabel)
+  } else if (label.by == "log2FoldChange") {
+    top_genes <- head(arrange(significant_genes, desc(log2FoldChange)),nlabel)
+    bottom_genes <- head(arrange(significant_genes, log2FoldChange),nlabel)
+  } else
+    stop ("Invalid label.by argument. Choose either padj or log2FoldChange.")
+  
+  ggplot(res, aes(log2FoldChange, -log(padj))) +
+    geom_point(aes(col=significance)) + 
+    scale_color_manual(values=c("red", "black")) + 
+    ggrepel::geom_text_repel(data=top_genes, aes(label=head(Gene.name,nlabel)), size = 3)+
+    ggrepel::geom_text_repel(data=bottom_genes, aes(label=head(Gene.name,nlabel)), color = "#619CFF", size = 3)+
+    labs ( x = "Log2FoldChange", y = "-(Log normalized p-value)")+
+    geom_vline(xintercept = 0, linetype = "dotted")+
+    theme_minimal()
+}
+
+plot_volcano(res, 0.01, nlabel = 30, label.by = "padj")
+```
+
+
+
+
+
+
+
+
+
+####
+
+
+The exported list of differentially expressed genes between hematopoietic cells and non-hematopoietic cells is called [results_hemato_vs_non_DEGs.csv](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_hemato_vs_non_DEGs.csv). Below are some sample plots that can be used to visualize the data.
+
+### PCA clustering of cell lines
+
+![PCA clustering of cell lines](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_PCA_cluster_hemato_vs_non.png)
+
+Above is a principal components analysis (PCA) plot on a subset of the cell lines in the dataset. We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot. This suggests that they have different gene expression profiles. The next plot will show us some of the genes that contribute to the clustering we see here.
+
+### Volcano plot to visualize differentially expressed genes with p-value cutoff
+
+![Volcano plot cell line DEGs](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_volcano_plot_DEGs.png)
+
+In accord with the clustering analysis, there are a lot of genes that are differentially expressed in hematopoietic vs non-hematopoietic cells.
+
+### Heatmap to display top differentially expressed genes
+
+![Heatmap of top DEGs](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_heatmap_top50_DEGs_ggplot2.png)
+
+The differentially expressed genes can also be visualized using a heatmap.
+
+---
+
+## Perform analysis only on enzymes
+
+For my research, I was also interested in how the enzyme expression profiles differed between hematopoietic and non-hematopoietically derived cell lines. To figure this out, I needed a way to filter out all the genes that were known to encode enzyme products. To do this, I used Bioconductor's ```AnnotationDbi``` and ```org.Hs.eg.db``` packages. After initializing the packages, running this function:
+
+```
+map.enzyme = function (res) {
+  res$enzyme <- mapIds(org.Hs.eg.db,
+                       keys=row.names(res),
+                       column="ENZYME",
+                       keytype="ENSEMBL",
+                       multiVals="first")
+  return(res)
+}
+```
+will apply the KEGG enzyme information to all the genes in the dataset. If the gene does not encode an enzyme, the value will be "NA". We can use this to our advantage to filter out non-enzyme encoding genes with ```na.omit()```:
+
+```
+# tag all the ensembl genes that have an enzyme entry
+enzyme_countdata10 = map.enzyme(countdata10)
+
+# remove all the ensembl genes that are missing an enzyme entry, leaving only annotated enzymes in the matrix
+enzyme_countdata10 = na.omit(enzyme_countdata10)
+
+dim(countdata10)
+# [1] 19613    64
+dim(enzyme_countdata10)
+# [1] 2222   65
+```
+This leaves us with 2222 enzymes! I then perform the same analysis as above, with this smaller table containing only the annotated enzymes.
+
+---
+
+# Conclusion
+
+These include many commonly used cell lines--researchers using these cell lines for experimental purposes will likely want to know what genes they express and to what extent they express them at. 
+
+If you are interested in learning how to perform a full RNA-seq pipeline analysis, you can look at my other [repo](https://github.com/erilu/Complete-RNA-seq-Pipeline-Transcriptome-Analysis) where I align raw .fastq sequencing files to a mouse reference genome, then use Bioconductor to find differentially expressed genes in activated vs. un-activated dendritic cells.

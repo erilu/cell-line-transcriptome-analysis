@@ -1,3 +1,4 @@
+*.Robj
 .Rhistory
 .DS_Store
 *~
