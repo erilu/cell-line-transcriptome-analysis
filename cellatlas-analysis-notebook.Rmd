@@ -307,7 +307,7 @@ plot_counts <- function (dds, gene){
 plot_counts(dds, "MGST1")
 ```
 
-We see that the distribution of expression for non-hematopoietic cells is skewed upwards by a small number of samples. The majority of other cell lines appear to have moderate expression of the enzyme. We can also display this data as a heatmap, in order to better visualize the variability in expression for each individual cell line:
+We see that the distribution of expression for non-hematopoietic cells is skewed upwards by a small number of samples. The majority of other cell lines appear to have moderate expression of the enzyme. We can also plot the expression values for each GST in a heatmap, in order to better visualize the variability in expression for each individual cell line:
 
 ```{r gst_heatmap, echo=F, fig.width=12, fig.height=8}
 gst_heatmap <- function(res) {
@@ -361,10 +361,10 @@ enzyme_heatmap <- function(res, padj_cutoff = 0.001, ngenes = 20, heatmap_title 
 enzyme_heatmap(res_enzyme, padj_cutoff = 0.01, ngenes = 50, heatmap_title = "Top enriched enzymes in non-hematopoietic cell lines")
 ```
 
-Although these enzymes appear restricted to non-hematopoietic cell lines, the expression of these enzymes are highly variable and spotty. There does not seem to be an enzyme that is uniformly expressed at a high level across all non-hematopoietic cell lines.
+Although these enzymes appear restricted to non-hematopoietic cell lines, the expression of these enzymes are highly variable and spotty. There does not seem to be an enzyme that is uniformly expressed at a high level across all non-hematopoietic cell lines. Nevertheless, I can use these lists of enzymes and GSTs as a starting point for my lab experiments.
 
 ## Conclusion
 
 Here, I've shown you how to perform differential gene expression analysis on the cell atlas dataset from the Human Protein Atlas. I compared hematopoietic and non-hematopoietic cell lines with the goal of finding a list of enzymes enriched in non-hematopoietic cells. My hope is that others will be able to work off of my analysis to compare different groups of cell lines for their own research projects.
 
-If you are interested in a more in-depth look at how to perform RNA-seq analysis, you can check out my bulk RNA-seq analysis [guide](https://github.com/erilu/bulk-rnaseq-analysis) where I provide step-by-step examples of how to download raw .fastq sequencing files, align them to a reference genome, and use DESeq2 to find differentially expressed genes. Thanks for reading!
+If you are interested in a more in-depth look at how to perform RNA-seq analysis, you can check out my bulk RNA-seq analysis [guide](https://github.com/erilu/bulk-rnaseq-analysis) where I provide step-by-step examples of how to download raw FASTQ sequencing files, align them to a reference genome, and use DESeq2 to find differentially expressed genes. Thanks for reading!

@@ -1,6 +1,7 @@
 Cell Line Transcriptome Analysis Using R
 ================
 Erick Lu
+
 March 19, 2020
 
 -   [Introduction](#introduction)
@@ -202,7 +203,7 @@ We also need to annotate our results by mapping the Ensembl IDs back to their re
 generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001) {
   # extract DESeq results between the comparisons indicated
   res <- results(dds, contrast = c("condition", comparisons[1], comparisons[2]))[,-c(3,4)]
-  
+
   # annotate the data with gene name
   res <- as_tibble(res, rownames = "ensembl_id")
   my_annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
@@ -212,7 +213,7 @@ generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001) {
   normalized_counts <- round(counts(dds, normalized = TRUE),3)
   combined_data <- as_tibble(cbind(res, normalized_counts))
   combined_data <- combined_data[order(combined_data$log2FoldChange, decreasing = T),]
-  
+
   # generate sorted lists with the indicated cutoff values
   res <- res[order(res$log2FoldChange, decreasing=TRUE ),]
   de_genes_padj <- res[which(res$padj < padjcutoff),]
@@ -220,7 +221,7 @@ generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001) {
   # write output to files
   write.csv (de_genes_padj, file = paste0(comparisons[1], "_vs_", comparisons[2], "_padj_cutoff.csv"), row.names =F)
   write.csv (combined_data, file = paste0(comparisons[1], "_vs_", comparisons[2], "_allgenes.csv"), row.names =F)
-  
+
   writeLines( paste0("For the comparison: ", comparisons[1], "_vs_", comparisons[2], "\n",
                      "Out of ", nrow(combined_data), " genes, ", nrow(de_genes_padj), " were below padj ", padjcutoff, "\n",
                      "Gene lists ordered by log2fchange have been generated.") )
@@ -335,7 +336,7 @@ plot_volcano <- function (res, padj_cutoff, nlabel = 10, label.by = "padj"){
   res <- mutate(res, significance=ifelse(res$padj<padj_cutoff, paste0("padj < ", padj_cutoff), paste0("padj > ", padj_cutoff)))
   res = res[!is.na(res$significance),]
   significant_genes <- res %>% filter(significance == paste0("padj < ", padj_cutoff))
-  
+
   # get labels for the highest or lowest genes according to either padj or log2FoldChange
   if (label.by == "padj") {
     top_genes <- significant_genes %>% filter (log2FoldChange > 0) %>% arrange(padj) %>% head(nlabel)
@@ -345,10 +346,10 @@ plot_volcano <- function (res, padj_cutoff, nlabel = 10, label.by = "padj"){
     bottom_genes <- head(arrange(significant_genes, log2FoldChange),nlabel)
   } else
     stop ("Invalid label.by argument. Choose either padj or log2FoldChange.")
-  
+
   ggplot(res, aes(log2FoldChange, -log(padj))) +
-    geom_point(aes(col=significance)) + 
-    scale_color_manual(values=c("red", "black")) + 
+    geom_point(aes(col=significance)) +
+    scale_color_manual(values=c("red", "black")) +
     ggrepel::geom_text_repel(data=top_genes, aes(label=head(Gene.name,nlabel)), size = 3)+
     ggrepel::geom_text_repel(data=bottom_genes, aes(label=head(Gene.name,nlabel)), color = "#619CFF", size = 3)+
     labs ( x = "Log2FoldChange", y = "-(Log normalized p-value)")+
@@ -426,7 +427,7 @@ plot_counts(dds, "MGST1")
 
 ![](cellatlas-analysis-notebook_files/figure-markdown_github/mgst1_plot_counts-1.png)
 
-We see that the distribution of expression for non-hematopoietic cells is skewed upwards by a small number of samples. The majority of other cell lines appear to have moderate expression of the enzyme. We can also display this data as a heatmap, in order to better visualize the variability in expression for each individual cell line:
+We see that the distribution of expression for non-hematopoietic cells is skewed upwards by a small number of samples. The majority of other cell lines appear to have moderate expression of the enzyme. We can also plot the expression values for each GST in a heatmap, in order to better visualize the variability in expression for each individual cell line:
 
 ![](cellatlas-analysis-notebook_files/figure-markdown_github/gst_heatmap-1.png)
 
@@ -456,11 +457,11 @@ This leaves us with 2224 enzymes! I can then sort the results table based on Log
 
 ![](cellatlas-analysis-notebook_files/figure-markdown_github/top_enriched_enzyme_heatmap-1.png)
 
-Although these enzymes appear restricted to non-hematopoietic cell lines, the expression of these enzymes are highly variable and spotty. There does not seem to be an enzyme that is uniformly expressed at a high level across all non-hematopoietic cell lines.
+Although these enzymes appear restricted to non-hematopoietic cell lines, the expression of these enzymes are highly variable and spotty. There does not seem to be an enzyme that is uniformly expressed at a high level across all non-hematopoietic cell lines. Nevertheless, I can use these lists of enzymes and GSTs as a starting point for my lab experiments.
 
 Conclusion
 ----------
 
 Here, I've shown you how to perform differential gene expression analysis on the cell atlas dataset from the Human Protein Atlas. I compared hematopoietic and non-hematopoietic cell lines with the goal of finding a list of enzymes enriched in non-hematopoietic cells. My hope is that others will be able to work off of my analysis to compare different groups of cell lines for their own research projects.
 
-If you are interested in a more in-depth look at how to perform RNA-seq analysis, you can check out my bulk RNA-seq analysis [guide](https://github.com/erilu/bulk-rnaseq-analysis) where I provide step-by-step examples of how to download raw .fastq sequencing files, align them to a reference genome, and use DESeq2 to find differentially expressed genes. Thanks for reading!
+If you are interested in a more in-depth look at how to perform RNA-seq analysis, you can check out my bulk RNA-seq analysis [guide](https://github.com/erilu/bulk-rnaseq-analysis) where I provide step-by-step examples of how to download raw FASTQ sequencing files, align them to a reference genome, and use DESeq2 to find differentially expressed genes. Thanks for reading!
