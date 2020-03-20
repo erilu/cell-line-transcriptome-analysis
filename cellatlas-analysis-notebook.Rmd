@@ -1,29 +1,30 @@
 ---
 title: "Cell Line Transcriptome Analysis Using R"
 author: Erick Lu
-date: "March 18, 2020 \n\n[GitHub Repo](https://github.com/erilu/cell-line-transcriptome-analysis)"
+date: "March 19, 2020 \n\n[GitHub Repo](https://github.com/erilu/cell-line-transcriptome-analysis)"
 output:
   html_document:
     toc: true
     df_print: paged
 ---
 
-**Use R to analyze and visualize RNA-seq data from 64 cell lines from The Human Protein Atlas**
+## Introduction
 
----
-## The data
-
-This project will show you how to identify differentially expressed genes between different groups of cell lines, which is a useful technique that can be used to identify enriched pathways and possible drug targets.
-
-The RNA-seq data can be downloaded from the [Human Protein Atlas website](https://www.proteinatlas.org/about/download). Look under item 19, **RNA HPA cell line gene data**, and download rna_celline.tsv.zip. A copy of the cell line RNA data, `rna_celline.tsv`, is also included in this repository. The data contains RNA-seq expression values from 64 different human cell lines. A description of the lines can be found here: (https://www.proteinatlas.org/humanproteome/cell/cell+line). This is a very useful resource for examining gene expression differences between cell lines from different origin tissues.
+This project will show you how to identify differentially expressed genes between different groups of cell lines using RNA-seq data from The Human Protein Atlas. This is a useful dataset that can be used to characterize gene expression patterns specific to cells from different tissues of origin.
 
 Here, I will take you through an analysis of hematopoietic vs non-hematopoietic cell lines, which includes:
-  1. Organizing the data.
-  2. Finding differentially expressed genes using DESeq2.
-  3. Annotating, exporting, and plotting the results.
 
----
-## Reading in and organizing the data
+1. Organizing the data.
+2. Finding differentially expressed genes using DESeq2.
+3. Annotating, exporting, and plotting the results.
+
+I performed this analysis in order to identify a set of enzymes that were enriched in non-hematopoietic cell lines. In the wet lab, I found that non-hematopoietic cell lines were secreting a molecule called geranylgeranyl-glutathione in greater amounts than hematopoietic cell lines. I wanted to figure out which enzymes could be responsible for producing the molecule, so I turned to this dataset to narrow down a list of candidate enzymes that were enriched in non-hematopoietic cells, which I could test in the lab.
+
+For a more in-depth guide about how to perform bulk RNA-seq analysis, you can check out my bulk RNA-seq [guide](https://github.com/erilu/bulk-rnaseq-analysis).
+
+## Organizing the data
+
+The RNA-seq data for 64 human cell lines can be downloaded from the [Human Protein Atlas website](https://www.proteinatlas.org/about/download). Look under item 19, **RNA HPA cell line gene data**, and download `rna_celline.tsv.zip`. A copy of the data, `rna_celline.tsv`, is also included in this repository. A description of the cell lines can be found [here](https://www.proteinatlas.org/humanproteome/cell/cell+line).
 
 Since the data are tab-delimited, we will first read in the data using `read.table` with the setting `sep=\t`.
 
@@ -38,88 +39,151 @@ dim(data)
 head(data)
 ```
 
-For each of the 19670 genes, the expression values for each of the 64 cell lines are provided in consecutive rows. We can verify that there are equal representation of genes across cell lines by quickly counting using `group_by` and `summarize` from `dplyr`:
+For each of the 19670 genes, the expression values for each of the 64 cell lines are provided in consecutive rows. We can verify that there are equal representation of genes across cell lines by quickly counting using `group_by()` and `summarize()` from `dplyr`:
 
-```{r}
+```{r message=F}
 library(tidyverse)
 data %>% group_by(Cell.line) %>% summarize (num_genes = n())
 ```
 
 For downstream analysis, the data needs to be reorganized into a different format. The RNA-seq analysis package [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html) from Bioconductor requires the data to be a matrix of expression values, in which the rows correspond to individual genes and the columns correspond to cell lines.
 
-In order to create this matrix, I will use the `dcast` function from the R package `reshape2`. This function will create a matrix using the column defined by the `value.var` argument, arranging its values according to a specified `formula`. In our case, we will set `value.var=TPM` and `formula=Gene~Cell.line`, which will make a matrix of TPM (transcripts per milllion) values.
+In order to create this matrix, I will use the `dcast()` function from the R package `reshape2`. This function will create a matrix using the column defined by the `value.var` argument, arranging its values according to a specified `formula`. In our case, we will set `value.var=TPM` and `formula=Gene~Cell.line`, which will make a matrix of TPM (transcripts per milllion) values.
 
 ```{r}
-library(reshape2)
-tpm <- dcast (data, Gene~Cell.line, value.var = "TPM")
+tpm <- reshape2::dcast (data, Gene~Cell.line, value.var = "TPM")
 tpm <- column_to_rownames(tpm, var = "Gene")
 dim(tpm)
 tpm[1:10,1:5]
 ```
 
-The dimensions of the reorganized data should be 19670 rows and 64 columns, with rownames corresponding to the ensembl IDs of each gene. I chose to use ensembl IDs as unique gene identifiers instead of the gene names, because it appears that there are a small number of duplicate gene names in the dataset:
+The dimensions of the reorganized data should be 19670 rows and 64 columns, with rownames corresponding to the Ensembl IDs of each gene. I chose to use Ensembl IDs as unique gene identifiers instead of the gene names, because it appears that there are a small number of duplicate gene names in the dataset:
 
 ```{r}
-# of unique ensembl IDs
+# of unique Ensembl IDs
 length(unique(data$Gene))
 # of unique gene names
 length(unique(data$Gene.name))
 ```
 
-Now that we have a data matrix of expression values in which each row is a gene and each column is a cell line, we can load this data into the R package DESeq2 to perform differential gene expression analysis, which I will explain in the section below.
+Later on in the analysis, we will map the Ensembl IDs back to their gene names using an annotation file obtained from the BioMart at ensembl.org. Now that we have a data matrix of expression values in which each row is a gene and each column is a cell line, we can load this data into the R package DESeq2 to perform differential gene expression analysis.
 
----
+## Differential gene expression analysis
 
-## Differential Gene Analysis
+I will be using version 1.26.0 of DESeq2 for this analysis. This package provides a set of data normalization and processing tools for differential gene expression analysis.
 
-Here, we will explore the differences in transcription between cell lines of interest. We will cluster the cell lines and pull out differentially expressed genes between subtypes of cells.
-
-```{r}
+```{r message=F}
 library(DESeq2)
 ```
 
+We will first categorize each cell line as either hematopoietic or non-hematopoietic. I used the information at https://www.proteinatlas.org/learn/cellines to identify cell lines from either myeloid or lymphoid origin:
+
 ```{r}
 hematopoietic <- c( "HEL","NB-4","HAP1","HL-60","HMC-1","K-562","THP-1","U-937",
-            "REH","Daudi","HDLM-2","Karpas-707","MOLT-4","RPMI-8226","U-266-70","U-266-84","U-698")
-
+            "REH","Daudi","HDLM-2","Karpas-707","MOLT-4","RPMI-8226","U-266/70","U-266/84","U-698")
 condition <- ifelse( colnames(tpm) %in% hematopoietic, "hematopoietic", "non-hematopoietic")
 colData <- as.data.frame(condition)
 rownames(colData) <- colnames(tpm)
-colData
+head(colData)
 ```
 
-```{r}
-tpm <- tpm*10
-```
+The data frame above has each of the cell lines labeled as "hematopoietic" vs "non-hematopoietic". We have to input this data frame and the raw expression data into the `DESeqDataSetFromMatrix()` function, which creates a DESeq2 object (usually named `dds`):
 
-```{r}
-dds <- DESeqDataSetFromMatrix(countData = tpm,
+```{r message=F}
+dds <- DESeqDataSetFromMatrix(countData = tpm*10,
 							  colData = colData,
 							  design = ~condition)
 ```
+Then, we run the function `DESeq()` to process the data and compute the differentially expressed genes between groups:
 
-```{r}
+```{r message=F}
 dds <- DESeq(dds)
-save(dds, file = "dds.Robj")
-load("dds.Robj")
 ```
+
+The results of the analysis can be extracted using the `results()` function on the `dds` object. The `contrast` argument specifies the two groups being compared:
+
+```{r eval=F}
+results(dds, contrast = c("condition", "non-hematopoietic", "hematopoietic"))
+```
+```{}
+## log2 fold change (MLE): condition hematopoietic vs non-hematopoietic
+## Wald test p-value: condition hematopoietic vs non-hematopoietic
+## DataFrame with 19670 rows and 6 columns
+```
+```{r echo=F}
+head(as.data.frame(results(dds, contrast = c("condition", "non-hematopoietic", "hematopoietic"))))
+```
+
+Because we are interested in genes which are significantly different between the two groups, we should filter the results for genes that have adjusted p-values below a certain threshold. We will also order the significant genes based on `log2FoldChange`, which allows us to view the genes which are most greatly up- or down-regulated between groups. For this comparison, higher `log2FoldChange` values mean a greater enrichment in non-hematopoietic cells.
+
+We also need to annotate our results by mapping the Ensembl IDs back to their respective gene names. I do so by loading an annotation file that I created from the BioMart at ensembl.org. The function `generate_DE_results()` below will perform these filtering, ordering, and annotation steps, and write the processed results to csv files.
 
 ```{r}
-annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
-head(annotation)
+generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001) {
+  # extract DESeq results between the comparisons indicated
+  res <- results(dds, contrast = c("condition", comparisons[1], comparisons[2]))[,-c(3,4)]
+  
+  # annotate the data with gene name
+  res <- as_tibble(res, rownames = "ensembl_id")
+  my_annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
+  res <- left_join(res, my_annotation, by = c("ensembl_id" = "Gene.stable.ID"))
+
+  # combine normalized counts with entire DE list
+  normalized_counts <- round(counts(dds, normalized = TRUE),3)
+  combined_data <- as_tibble(cbind(res, normalized_counts))
+  combined_data <- combined_data[order(combined_data$log2FoldChange, decreasing = T),]
+  
+  # generate sorted lists with the indicated cutoff values
+  res <- res[order(res$log2FoldChange, decreasing=TRUE ),]
+  de_genes_padj <- res[which(res$padj < padjcutoff),]
+
+  # write output to files
+  write.csv (de_genes_padj, file = paste0(comparisons[1], "_vs_", comparisons[2], "_padj_cutoff.csv"), row.names =F)
+  write.csv (combined_data, file = paste0(comparisons[1], "_vs_", comparisons[2], "_allgenes.csv"), row.names =F)
+  
+  writeLines( paste0("For the comparison: ", comparisons[1], "_vs_", comparisons[2], "\n",
+                     "Out of ", nrow(combined_data), " genes, ", nrow(de_genes_padj), " were below padj ", padjcutoff, "\n",
+                     "Gene lists ordered by log2fchange have been generated.") )
+}
 ```
 
-## Visualizations for sample variability
-
+After running the function, the console should display the number of significant genes under the specified p-value cutoff:
 
 ```{r}
-vsd <- vst(dds, blind = TRUE)
+generate_DE_results (dds, c("non-hematopoietic", "hematopoietic"), padjcutoff = 0.001)
 ```
 
-### Variable Genes Heatmap
+The gene lists can be found in the `output/` folder of this repo. We can sift through these gene lists to see which genes are most differentially up or down in non-hematopoietic cell lines compared to hematopoietic cell lines. Positive `log2FoldChange` values mean the gene is up in non-hematopoetic cells, and vice versa.
 
-```{r variable-gene-heatmap-all-samples}
-variable_gene_heatmap <- function (vsd.obj, num_genes = 500, annotation, title = "") {
+## Visualizations
+
+### Heatmap of differentially expressed genes
+
+A way to visualize the results from the csv files we generated is to plot the expression values for each gene in a heatmap. The heatmap below takes the top 50 significant genes ordered by the absolute value of the `log2FoldChange` value. It should display genes that are highly enriched in either the hematopoietic or non-hematopoietic lines.
+
+```{r differential_gene_heatmap, fig.width=12, fig.height=9}
+res <- read.csv ("non-hematopoietic_vs_hematopoietic_allgenes.csv", header = T, check.names = F)
+DE_gene_heatmap <- function(res, padj_cutoff = 0.001, ngenes = 20) {
+  # generate the color palette
+  brewer_palette <- "RdBu"
+  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, brewer_palette))
+  mr <- ramp(256)[256:1]
+  # obtain the significant genes and order by log2FoldChange
+  significant_genes <- res %>% filter(padj < padj_cutoff) %>% arrange (desc(abs(log2FoldChange))) %>% head (ngenes)
+  heatmap_values <- as.matrix(significant_genes[,-c(1:8)])
+  rownames(heatmap_values) <- significant_genes$Gene.name
+  heatmap_values <- cbind (heatmap_values[,colnames(heatmap_values) %in% hematopoietic], heatmap_values[,!colnames(heatmap_values) %in% hematopoietic])
+  # plot the heatmap using pheatmap
+  pheatmap::pheatmap(heatmap_values, color = mr, scale = "row", annotation_col = colData, border_color = NA, cluster_cols = F)
+}
+DE_gene_heatmap(res, padj_cutoff = 0.01, ngenes = 50)
+```
+
+Another way of looking at differences in gene expression between groups of samples is to construct a heatmap displaying the top most variable genes. The code below will find the top most variable genes using the `rowVars()` function, and plot the results using `pheatmap()`.
+
+```{r variable_genes_heatmap, fig.width=12, fig.height=10}
+variable_gene_heatmap <- function (dds, num_genes = 500) {
+  vsd.obj <- vst(dds, blind = TRUE)
   brewer_palette <- "RdBu"
   # Ramp the color in order to get the scale.
   ramp <- colorRampPalette( RColorBrewer::brewer.pal(11, brewer_palette))
@@ -133,6 +197,7 @@ variable_gene_heatmap <- function (vsd.obj, num_genes = 500, annotation, title =
   # subtract out the means from each row, leaving the variances for each gene
   top_variable_genes <- top_variable_genes - rowMeans(top_variable_genes, na.rm=T)
   # replace the ensembl ids with the gene names
+  annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
   gene_names <- annotation$Gene.name[match(rownames(top_variable_genes), annotation$Gene.stable.ID)]
   rownames(top_variable_genes) <- gene_names
   # reconstruct colData without sizeFactors for heatmap labeling
@@ -140,16 +205,21 @@ variable_gene_heatmap <- function (vsd.obj, num_genes = 500, annotation, title =
   coldata$sizeFactor <- NULL
   coldata$replaceable <- NULL
   # draw heatmap using pheatmap
-  pheatmap::pheatmap(top_variable_genes, color = mr, annotation_col = coldata, fontsize_col = 8, fontsize_row = 250/num_genes, border_color = NA, main = title)
+  pheatmap::pheatmap(top_variable_genes, color = mr, annotation_col = coldata, fontsize_col = 12, fontsize_row = 10, border_color = NA, fontsize = 10)
 }
 
-variable_gene_heatmap(vsd, num_genes = 40, annotation = annotation)
+variable_gene_heatmap(dds, num_genes = 50)
 ```
 
-### PCA Plot
+We observe that the hematopoietic cell lines mainly cluster together in the center of the heatmap, and that there are two major clusters of non-hematopoietic cell lines to the left and right. The genes that define the hematopoietic cells include CD74, JCHAIN, and LCP1. The genes that define the non-hematopoietic cells appear to be a set of collagen-related genese (left), and keratin-related genes (right). Interestingly, MGST1 is an enzyme that appears to be enriched in a subset of the non-hematopoietic lines.
 
-```{r pca-plot}
-plot_PCA = function (vsd.obj) {
+### PCA plot to cluster cell lines
+
+We can also use a principal components analysis (PCA) plot to observe how the cell lines cluster. Cell lines with similar gene expression patterns are expected to cluster more closely together on this plot.
+
+```{r pca_plot, fig.width = 11, fig.height=6}
+plot_PCA = function (dds) {
+  vsd.obj <- vst(dds, blind = TRUE)
   pcaData <- plotPCA(vsd.obj,  intgroup = c("condition"), returnData = T)
   percentVar <- round(100 * attr(pcaData, "percentVar"))
   ggplot(pcaData, aes(PC1, PC2, color=condition)) +
@@ -159,134 +229,16 @@ plot_PCA = function (vsd.obj) {
          title = "PCA Plot colored by condition") +
     ggrepel::geom_text_repel(aes(label = name), color = "black")
 }
-plot_PCA(vsd)
+plot_PCA(dds)
 ```
 
+We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot. This suggests that they have very distinct gene expression profiles. The spread between the non-hematopoietic lines is much greater than we see within the hematopoietic lines. Perhaps this is expected, because the non-hematopoietic lines have cells derived from vastly different tissues, such as brain and liver.
 
-```{r}
-generate_DE_results <- function (dds, comparisons, padjcutoff = 0.001, log2cutoff = 0.5, cpmcutoff = 2) {
-  # generate average counts per million metric from raw count data 
-  raw_counts <- counts(dds, normalized = F)
-  cpms <- enframe(rowMeans(edgeR::cpm(raw_counts)))
-  colnames(cpms) <- c("ensembl_id", "avg_cpm")
-  
-  # extract DESeq results between the comparisons indicated
-  res <- results(dds, contrast = c("condition", comparisons[1], comparisons[2]))[,-c(3,4)]
-  
-  # annotate the data with gene name and average counts per million value
-  res <- as_tibble(res, rownames = "ensembl_id")
-  # read in the annotation and append it to the data
-  my_annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
-  res <- left_join(res, my_annotation, by = c("ensembl_id" = "Gene.stable.ID"))
-  # append the average cpm value to the results data
-  res <- left_join(res, cpms, by = c("ensembl_id" = "ensembl_id"))
-  
-  # combine normalized counts with entire DE list
-  normalized_counts <- round(counts(dds, normalized = TRUE),3)
-  combined_data <- as_tibble(cbind(res, normalized_counts))
-  combined_data <- combined_data[order(combined_data$log2FoldChange, decreasing = T),]
-  
-  # make ordered rank file for GSEA, selecting only protein coding genes
-  res_prot <- res[which(res$Gene.type == "protein_coding"),]
-  res_prot_ranked <- res_prot[order(res_prot$log2FoldChange, decreasing = T),c("Gene.name", "log2FoldChange")]
-  res_prot_ranked <- na.omit(res_prot_ranked)
-  res_prot_ranked$Gene.name <- str_to_upper(res_prot_ranked$Gene.name)
-  
-  # generate sorted lists with the indicated cutoff values
-  res <- res[order(res$log2FoldChange, decreasing=TRUE ),]
-  de_genes_padj <- res[which(res$padj < padjcutoff),]
-  de_genes_log2f <- res[which(abs(res$log2FoldChange) > log2cutoff & res$padj < padjcutoff),]
-  de_genes_cpm <- res[which(res$avg_cpm > cpmcutoff & res$padj < padjcutoff),]
-  
-  # write output to files
-  write.csv (de_genes_padj, file = paste0(comparisons[1], "_vs_", comparisons[2], "_padj_cutoff.csv"), row.names =F)
-  write.csv (de_genes_log2f, file = paste0(comparisons[1], "_vs_", comparisons[2], "_log2f_cutoff.csv"), row.names =F)
-  write.csv (de_genes_cpm, file = paste0(comparisons[1], "_vs_", comparisons[2], "_cpm_cutoff.csv"), row.names =F)
-  write.csv (combined_data, file = paste0(comparisons[1], "_vs_", comparisons[2], "_allgenes.csv"), row.names =F)
-  write.table (res_prot_ranked, file = paste0(comparisons[1], "_vs_", comparisons[2], "_rank.rnk"), sep = "\t", row.names = F, quote = F)
-  
-  writeLines( paste0("For the comparison: ", comparisons[1], "_vs_", comparisons[2], ", out of ", nrow(combined_data), " genes, there were: \n", 
-               nrow(de_genes_padj), " genes below padj ", padjcutoff, "\n",
-               nrow(de_genes_log2f), " genes below padj ", padjcutoff, " and above a log2FoldChange of ", log2cutoff, "\n",
-               nrow(de_genes_cpm), " genes below padj ", padjcutoff, " and above an avg cpm of ", cpmcutoff, "\n",
-               "Gene lists ordered by log2fchange with the cutoffs above have been generated.") )
-  gene_count <- tibble (cutoff_parameter = c("padj", "log2fc", "avg_cpm" ), 
-                        cutoff_value = c(padjcutoff, log2cutoff, cpmcutoff), 
-                        signif_genes = c(nrow(de_genes_padj), nrow(de_genes_log2f), nrow(de_genes_cpm)))
-  invisible(gene_count)
-}
-```
+### Volcano plot
 
-After running the function, the console should display the number of genes that passed each filtering critera:
+A volcano plot is another way to visualize differentially expressed genes between the two groups. Here, the genes on the left are enriched in the hematopoietic cells, and the genes on the right are enriched in the non-hematopoietic cells.
 
-```{r}
-generate_DE_results (dds, c("hematopoietic", "non-hematopoietic"))
-```
-
-# plot counts
-
-```{r upgraded-plot-counts, fig.width=6, fig.height=3}
-plot_counts <- function (dds, gene, normalization = "DESeq2"){
-  # read in the annotation file
-  annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
-  # obtain normalized data
-  if (normalization == "cpm") {
-    normalized_data <- cpm(counts(dds, normalized = F)) # normalize the raw data by counts per million
-  } else if (normalization == "DESeq2")
-    normalized_data <- counts(dds, normalized = T) # use DESeq2 normalized counts
-  # get sample groups from colData
-  condition <- dds@colData$condition
-  # get the gene name from the ensembl id
-  if (is.numeric(gene)) { # check if an index is supplied or if ensembl_id is supplied
-    if (gene%%1==0 )
-      ensembl_id <- rownames(normalized_data)[gene]
-    else
-      stop("Invalid index supplied.")
-  } else if (gene %in% annotation$Gene.name){ # check if a gene name is supplied
-    ensembl_id <- annotation$Gene.stable.ID[which(annotation$Gene.name == gene)]
-  } else if (gene %in% annotation$Gene.stable.ID){
-    ensembl_id <- gene
-  } else {
-    stop("Gene not found. Check spelling.")
-  }
-  expression <- normalized_data[ensembl_id,]
-  gene_name <- annotation$Gene.name[which(annotation$Gene.stable.ID == ensembl_id)]
-  # construct a tibble with the grouping and expression
-  gene_tib <- tibble(condition = condition, expression = expression)
-  ggplot(gene_tib, aes(x = condition, y = expression))+
-    geom_boxplot(outlier.size = NULL)+
-    geom_point()+
-    labs (title = paste0("Expression of ", gene_name, " - ", ensembl_id), x = "group", y = paste0("Normalized expression (", normalization , ")"))+
-    theme(axis.text.x = element_text(size = 11), axis.text.y = element_text(size = 11))
-}
-
-plot_counts(dds, "P2RY8")
-plot_counts(dds, "TYROBP")
-plot_counts(dds, "GSTP1")
-```
-
-```{r differential-gene-heatmap}
-res <- read.csv ("hematopoietic_vs_non-hematopoietic_allgenes.csv", header = T, check.names = F)
-
-DE_gene_heatmap <- function(res, padj_cutoff = 0.0001, ngenes = 20) {
-  # generate the color palette
-  brewer_palette <- "RdBu"
-  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, brewer_palette))
-  mr <- ramp(256)[256:1]
-  # obtain the significant genes and order by log2FoldChange
-  significant_genes <- res %>% filter(padj < padj_cutoff) %>% arrange (desc(abs(log2FoldChange))) %>% head (ngenes)
-  heatmap_values <- as.matrix(significant_genes[,-c(1:8)])
-  rownames(heatmap_values) <- significant_genes$Gene.name
-  heatmap_values <- cbind (heatmap_values[,colnames(heatmap_values) %in% hematopoietic], heatmap_values[,!colnames(heatmap_values) %in% hematopoietic])
-  # plot the heatmap using pheatmap
-  pheatmap::pheatmap(heatmap_values, color = mr, scale = "row", annotation_col = colData, fontsize_col = 10, fontsize_row = 200/ngenes, fontsize = 5, border_color = NA, cluster_cols = F)
-}
-DE_gene_heatmap(res, 0.5, 50)
-```
-
-
-```{r volcano-plot}
-
+```{r volcano_plot,fig.width=10, fig.height=4}
 plot_volcano <- function (res, padj_cutoff, nlabel = 10, label.by = "padj"){
   # assign significance to results based on padj
   res <- mutate(res, significance=ifelse(res$padj<padj_cutoff, paste0("padj < ", padj_cutoff), paste0("padj > ", padj_cutoff)))
@@ -313,76 +265,106 @@ plot_volcano <- function (res, padj_cutoff, nlabel = 10, label.by = "padj"){
     theme_minimal()
 }
 
-plot_volcano(res, 0.01, nlabel = 30, label.by = "padj")
+plot_volcano(res, 0.01, nlabel = 20, label.by = "padj")
 ```
 
+As expected, we observe that genes such as PTPRC (CD45) and P2RY8 are enriched in the hematopoietic cell lines.
 
+## Enzyme expression analysis
 
+I was specifically interested in the expression of a class of enzymes called glutathione-S-transferases, or GSTs. We can extract a list of the gsts by using the `grep()` function for the pattern "GST":
 
-
-
-
-
-
-####
-
-
-The exported list of differentially expressed genes between hematopoietic cells and non-hematopoietic cells is called [results_hemato_vs_non_DEGs.csv](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_hemato_vs_non_DEGs.csv). Below are some sample plots that can be used to visualize the data.
-
-### PCA clustering of cell lines
-
-![PCA clustering of cell lines](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_PCA_cluster_hemato_vs_non.png)
-
-Above is a principal components analysis (PCA) plot on a subset of the cell lines in the dataset. We can observe that the hematopoietic cell lines cluster away from the non-hematopoietic cell lines in the PCA plot. This suggests that they have different gene expression profiles. The next plot will show us some of the genes that contribute to the clustering we see here.
-
-### Volcano plot to visualize differentially expressed genes with p-value cutoff
-
-![Volcano plot cell line DEGs](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_volcano_plot_DEGs.png)
-
-In accord with the clustering analysis, there are a lot of genes that are differentially expressed in hematopoietic vs non-hematopoietic cells.
-
-### Heatmap to display top differentially expressed genes
-
-![Heatmap of top DEGs](https://github.com/erilu/R-Cell-Line-Transcriptome-Analysis/blob/master/results_heatmap_top50_DEGs_ggplot2.png)
-
-The differentially expressed genes can also be visualized using a heatmap.
-
----
-
-## Perform analysis only on enzymes
-
-For my research, I was also interested in how the enzyme expression profiles differed between hematopoietic and non-hematopoietically derived cell lines. To figure this out, I needed a way to filter out all the genes that were known to encode enzyme products. To do this, I used Bioconductor's ```AnnotationDbi``` and ```org.Hs.eg.db``` packages. After initializing the packages, running this function:
-
+```{r}
+gst <- res[grep("GST", res$Gene.name),]
+gst[,c(1:3,5:6)]
 ```
-map.enzyme = function (res) {
-  res$enzyme <- mapIds(org.Hs.eg.db,
-                       keys=row.names(res),
-                       column="ENZYME",
-                       keytype="ENSEMBL",
-                       multiVals="first")
-  return(res)
+
+Looking at the `log2foldchange` values, we see that GSTT2B, GSTM5, GST02, MGST1, and GSTM3 are the top 5 GSTs that are higher in non-hematopoietic cell lines compared to hematopoietic cell lines. We can plot individual graphs for genes of interest to see the extent of enrichment:
+
+```{r mgst1_plot_counts, fig.width=6, fig.height=4}
+plot_counts <- function (dds, gene){
+  annotation <- read.csv("GRCh38.p13_annotation.csv", header = T, stringsAsFactors = F)
+  normalized_data <- counts(dds, normalized = T)
+  condition <- dds@colData$condition
+  # get the gene name from the ensembl id
+  if (gene %in% annotation$Gene.name){ # check if a gene name is supplied
+    ensembl_id <- annotation$Gene.stable.ID[which(annotation$Gene.name == gene)]
+  } else if (gene %in% annotation$Gene.stable.ID){
+    ensembl_id <- gene
+  } else {
+    stop("Gene not found. Check spelling.")
+  }
+  expression <- normalized_data[ensembl_id,]
+  gene_name <- annotation$Gene.name[which(annotation$Gene.stable.ID == ensembl_id)]
+  gene_tib <- tibble(condition = condition, expression = expression)
+  ggplot(gene_tib, aes(x = condition, y = expression))+
+    geom_boxplot(outlier.shape = NA)+
+    geom_jitter()+
+    labs (title = paste0("Expression of ", gene_name, " - ", ensembl_id),
+          x = "group", y = paste0("Normalized expression (DESeq2)"))+
+    theme(axis.text.x = element_text(size = 11), axis.text.y = element_text(size = 11))
 }
+plot_counts(dds, "MGST1")
 ```
-will apply the KEGG enzyme information to all the genes in the dataset. If the gene does not encode an enzyme, the value will be "NA". We can use this to our advantage to filter out non-enzyme encoding genes with ```na.omit()```:
 
+We see that the distribution of expression for non-hematopoietic cells is skewed upwards by a small number of samples. The majority of other cell lines appear to have moderate expression of the enzyme. We can also display this data as a heatmap, in order to better visualize the variability in expression for each individual cell line:
+
+```{r gst_heatmap, echo=F, fig.width=12, fig.height=8}
+gst_heatmap <- function(res) {
+  # generate the color palette
+  brewer_palette <- "RdBu"
+  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, brewer_palette))
+  mr <- ramp(256)[256:1]
+  # obtain the significant genes and order by log2FoldChange
+  significant_genes <- gst %>% arrange (desc(log2FoldChange))
+  heatmap_values <- as.matrix(significant_genes[,-c(1:8)])
+  rownames(heatmap_values) <- significant_genes$Gene.name
+  heatmap_values <- cbind (heatmap_values[,colnames(heatmap_values) %in% hematopoietic], heatmap_values[,!colnames(heatmap_values) %in% hematopoietic])
+  # plot the heatmap using pheatmap
+  pheatmap::pheatmap(heatmap_values, color = mr, scale = "row", annotation_col = colData, fontsize_col = 12, fontsize_row = 12, fontsize = 12, border_color = NA, cluster_cols = F, cluster_rows = F)
+}
+gst_heatmap(gst)
 ```
-# tag all the ensembl genes that have an enzyme entry
-enzyme_countdata10 = map.enzyme(countdata10)
 
-# remove all the ensembl genes that are missing an enzyme entry, leaving only annotated enzymes in the matrix
-enzyme_countdata10 = na.omit(enzyme_countdata10)
+In order to get a more holistic, unbiased list of enzymes, we can filter our differential expression analysis results for only the genes that encode enzymes. To do so, we can annotate which genes encode enzymes using the `AnnotationDbi` package:
 
-dim(countdata10)
-# [1] 19613    64
-dim(enzyme_countdata10)
-# [1] 2222   65
+```{r message=F, error=F, warning=F}
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+
+res$enzyme <- mapIds(org.Hs.eg.db,
+                    keys=as.character(res$ensembl_id),
+                    column="ENZYME",
+                    keytype="ENSEMBL",
+                    multiVals="first")
 ```
-This leaves us with 2222 enzymes! I then perform the same analysis as above, with this smaller table containing only the annotated enzymes.
 
----
+The `mapIds()` function above will apply the KEGG enzyme information to all the genes in the dataset. If the gene does not encode an enzyme, the value will be "NA". We can use this to our advantage to filter out non-enzyme encoding genes:
 
-# Conclusion
+```{r}
+res_enzyme <- res[which(!is.na(res$enzyme)),]
+dim(res_enzyme)
+```
 
-These include many commonly used cell lines--researchers using these cell lines for experimental purposes will likely want to know what genes they express and to what extent they express them at. 
+This leaves us with 2224 enzymes! I can then sort the results table based on Log2FoldChange values to find the enzymes which are most enriched in non-hematopoietic cells, and display the results using a heatmap:
 
-If you are interested in learning how to perform a full RNA-seq pipeline analysis, you can look at my other [repo](https://github.com/erilu/Complete-RNA-seq-Pipeline-Transcriptome-Analysis) where I align raw .fastq sequencing files to a mouse reference genome, then use Bioconductor to find differentially expressed genes in activated vs. un-activated dendritic cells.
+```{r top_enriched_enzyme_heatmap, echo=F, fig.width=12, fig.height=9.5}
+enzyme_heatmap <- function(res, padj_cutoff = 0.001, ngenes = 20, heatmap_title = "") {
+  ramp <- colorRampPalette(RColorBrewer::brewer.pal(11, "RdBu"))
+  mr <- ramp(256)[256:1]
+  significant_genes <- res %>% filter(padj < padj_cutoff) %>% arrange (desc(log2FoldChange)) %>% head (ngenes)
+  heatmap_values <- as.matrix(significant_genes[,-c(1:8,72)])
+  rownames(heatmap_values) <- significant_genes$Gene.name
+  heatmap_values <- cbind (heatmap_values[,colnames(heatmap_values) %in% hematopoietic], heatmap_values[,!colnames(heatmap_values) %in% hematopoietic])
+  pheatmap::pheatmap(heatmap_values, color = mr, scale = "row", annotation_col = colData, fontsize_col = 12, fontsize_row = 11, fontsize = 12, border_color = NA, cluster_cols = F, cluster_rows = F, main = heatmap_title)
+}
+enzyme_heatmap(res_enzyme, padj_cutoff = 0.01, ngenes = 50, heatmap_title = "Top enriched enzymes in non-hematopoietic cell lines")
+```
+
+Although these enzymes appear restricted to non-hematopoietic cell lines, the expression of these enzymes are highly variable and spotty. There does not seem to be an enzyme that is uniformly expressed at a high level across all non-hematopoietic cell lines.
+
+## Conclusion
+
+Here, I've shown you how to perform differential gene expression analysis on the cell atlas dataset from the Human Protein Atlas. I compared hematopoietic and non-hematopoietic cell lines with the goal of finding a list of enzymes enriched in non-hematopoietic cells. My hope is that others will be able to work off of my analysis to compare different groups of cell lines for their own research projects.
+
+If you are interested in a more in-depth look at how to perform RNA-seq analysis, you can check out my bulk RNA-seq analysis [guide](https://github.com/erilu/bulk-rnaseq-analysis) where I provide step-by-step examples of how to download raw .fastq sequencing files, align them to a reference genome, and use DESeq2 to find differentially expressed genes. Thanks for reading!
